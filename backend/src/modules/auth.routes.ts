@@ -28,6 +28,40 @@ function registerFailure(key: string) {
 
 const publicUser = (u: { id: string; name: string; email: string }) => ({ id: u.id, name: u.name, email: u.email });
 
+/** Verifica se o sistema precisa da configuração inicial (0 usuários no banco) */
+authRouter.get('/setup-status', async (_req, res) => {
+  const count = await prisma.user.count();
+  res.json({ needsSetup: count === 0 });
+});
+
+/** Cadastro do primeiro administrador (só funciona enquanto houver 0 usuários) */
+authRouter.post('/setup', async (req, res) => {
+  const count = await prisma.user.count();
+  if (count > 0) {
+    throw new HttpError(403, 'A configuração inicial já foi realizada. Faça login.');
+  }
+  const body = z
+    .object({
+      name: z.string().trim().min(2, 'Informe o nome'),
+      email,
+      password: z.string().min(8, 'A senha deve ter no mínimo 8 caracteres'),
+    })
+    .parse(req.body);
+
+  assertStrongPassword(body.password);
+  const user = await prisma.user.create({
+    data: {
+      name: body.name,
+      email: body.email,
+      passwordHash: await hashPassword(body.password),
+    },
+  });
+
+  const token = await createSession(user.id, req.header('user-agent'));
+  res.setHeader('Set-Cookie', sessionCookie(token));
+  res.json({ user: publicUser(user), token });
+});
+
 /** Login com e-mail e senha: grava o cookie da sessão e devolve o token (para clientes sem cookie) */
 authRouter.post('/login', async (req, res) => {
   const body = z.object({ email, password: z.string().min(1, 'Informe a senha') }).parse(req.body);
