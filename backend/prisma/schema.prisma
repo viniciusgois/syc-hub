@@ -1,0 +1,775 @@
+// ============================================================================
+// SYC Hub (Save Your Company) - Prisma Schema v1.0
+// Sistema Multi-Tenant de Gestão & BPO Financeiro
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------------------------------
+// ENUMS DO DOMÍNIO FINANCEIRO & BPO
+// ----------------------------------------------------------------------------
+
+enum UserRole {
+  OWNER // Proprietário / Administrador Geral
+  ADMIN // Gestor Financeiro / BPO Lead
+  FINANCIAL_OPERATOR // Analista / Operador BPO (Conciliação, Lançamentos)
+  CONSULTANT // Consultor Financeiro (Visualização, Relatórios e DRE)
+  VIEWER // Acesso somente leitura
+}
+
+enum CompanyStatus {
+  ACTIVE
+  INACTIVE
+  TRIAL
+  SUSPENDED
+}
+
+enum PersonType {
+  LEGAL // Pessoa Jurídica (CNPJ)
+  NATURAL // Pessoa Física (CPF)
+  FOREIGN // Exterior (documento estrangeiro)
+}
+
+enum TaxRegime {
+  SIMPLES_NACIONAL
+  LUCRO_PRESUMIDO
+  LUCRO_REAL
+  MEI
+}
+
+enum AccountType {
+  CHECKING // Conta Corrente Bancária
+  SAVINGS // Conta Poupança
+  INVESTMENT // Conta Investimento / Aplicação
+  CASH // Caixa Físico (Pequeno Caixa / Espécie)
+  CREDIT_CARD // Cartão de Crédito Corporativo
+  PAYMENT_GATEWAY // Gateway de Pagamento (Asaas, Mercado Pago, Stripe)
+  OTHER // Outras contas de controle financeiro
+}
+
+enum TransactionType {
+  CREDIT // Entrada / Recebimento (+)
+  DEBIT // Saída / Pagamento (-)
+}
+
+enum ReconciliationStatus {
+  PENDING // Pendente de Conciliação
+  SUGGESTED // Sugestão de Conciliação via Regra / IA
+  RECONCILED // 100% Conciliado e Validado
+  IGNORED // Ignorado / Não Conciliável (ex: erro de importação)
+}
+
+enum TransactionOrigin {
+  OFX_IMPORT // Importação de Extrato Bancário OFX
+  SPREADSHEET_IMPORT // Importação de Planilha Excel/CSV
+  MANUAL_CASH // Lançamento Manual (Espécie/Caixa)
+  API_INTEGRATION // Integração Direta via Open Finance / API
+  SYSTEM_RECURRING // Gerado por Regra de Recorrência
+  SETTLEMENT // Baixa de conta a pagar/receber (recebimento/pagamento registrado no sistema)
+}
+
+// Seções fixas da DRE gerencial (não mudam entre empresas)
+enum DRESection {
+  OPERATING_REVENUE // Receitas operacionais
+  OPERATING_COSTS // Custos operacionais
+  OPERATING_EXPENSES // Despesas operacionais e outras receitas
+  INVESTING // Atividades de investimento
+  FINANCING // Atividades de financiamento
+}
+
+enum CategoryType {
+  INCOME // Receita
+  EXPENSE // Despesa
+  TRANSFER // Transferência Neutra
+}
+
+enum ContactType {
+  CUSTOMER // Cliente
+  SUPPLIER // Fornecedor
+  EMPLOYEE // Funcionário / Colaborador
+  PARTNER // Sócio / Acionista
+  OTHER // Outro
+}
+
+enum RuleMatchType {
+  CONTAINS // Descrição contém texto
+  EXACT // Descrição exatamente igual
+  STARTS_WITH // Começa com
+  REGEX // Expressão Regular
+}
+
+enum PaymentStatus {
+  PENDING // Pendente / A Vencer
+  PAID // Pago / Liquidado
+  OVERDUE // Em Atraso
+  CANCELLED // Cancelado
+  LOST // Perda (não será recebido/pago)
+}
+
+// ----------------------------------------------------------------------------
+// MULTI-TENANCY & GESTÃO DE ACESSOS (RBAC)
+// ----------------------------------------------------------------------------
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  name         String
+  passwordHash String?
+  avatarUrl    String?
+  phone        String?
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  memberships   CompanyUser[]
+  importBatches ImportBatch[] @relation("BatchImporter")
+  reconciledTx  Transaction[] @relation("TransactionReconciler")
+  contactNotes  ContactNote[]
+  sessions      Session[]
+  tokens        UserToken[]   @relation("TokenOwner")
+  issuedTokens  UserToken[]   @relation("TokenIssuer")
+
+  @@map("users")
+}
+
+model Company {
+  id                  String        @id @default(uuid())
+  personType          PersonType    @default(LEGAL)
+  code                String? // Código interno do cliente no BPO
+  legalName           String // Razão Social (PJ) ou Nome Completo (PF)
+  tradeName           String // Nome Fantasia
+  cnpj                String        @unique // CNPJ (PJ) ou CPF (PF), somente dígitos
+  cei                 String? // Cadastro Específico do INSS
+  stateReg            String? // Inscrição Estadual
+  cityReg             String? // Inscrição Municipal
+  taxRegime           TaxRegime     @default(SIMPLES_NACIONAL)
+  email               String?
+  phone               String?
+  address             String? // Logradouro
+  addressNumber       String?
+  addressComplement   String?
+  district            String? // Bairro
+  city                String?
+  cityIbgeCode        String? // Código IBGE do município
+  state               String?
+  postalCode          String?
+  segment             String? // Ramo de atividade
+  cnae                String? // CNAE Fiscal principal (7 dígitos)
+  cnaeDescription     String?
+  logoUrl             String?
+  status              CompanyStatus @default(ACTIVE)
+  // Configurações avançadas
+  provisioningMonths  Int           @default(12) // Meses à frente para gerar recorrências sem fim
+  accrualBasis        Boolean       @default(false) // DRE por competência (senão, caixa)
+  costCentersEnabled  Boolean       @default(true)
+  splitsEnabled       Boolean       @default(false) // Rateio por categoria e centro de custo; juros/multa/desconto em categorias próprias
+  bankScheduleEnabled Boolean       @default(false) // Marcar pagamentos agendados como "programado no banco"
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  // Relações Multi-tenant
+  users            CompanyUser[]
+  bankAccounts     BankAccount[]
+  categories       Category[]
+  costCenters      CostCenter[]
+  contacts         Contact[]
+  transactions     Transaction[]
+  importBatches    ImportBatch[]
+  rules            ReconciliationRule[]
+  payables         Payable[]
+  receivables      Receivable[]
+  contactNotes     ContactNote[]
+  recurrences      Recurrence[]
+  entrySettlements EntrySettlement[]
+  entrySplits      EntrySplit[]
+  dataImports      DataImport[]
+
+  @@index([status])
+  @@index([tradeName])
+  @@map("companies")
+}
+
+// Sessão de login: o navegador guarda o token num cookie httpOnly (ou envia como Bearer); no banco fica só o hash
+/// Migração de dados de outro sistema (ex.: relatório "Unificado por lançamento" do Nibo); pode ser desfeita
+model DataImport {
+  id               String   @id @default(uuid())
+  companyId        String
+  source           String // "NIBO"
+  fileName         String
+  fileHash         String
+  importedByUserId String
+  status           String   @default("PROCESSED") // PROCESSED, ROLLED_BACK
+  summary          Json // totais, contagens e avisos de revisão
+  created          Json // ids criados (para desfazer)
+  createdAt        DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, createdAt])
+  @@map("data_imports")
+}
+
+model Session {
+  id         String   @id @default(uuid())
+  userId     String
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+enum UserTokenType {
+  INVITE // Primeiro acesso: o usuário define a senha
+  PASSWORD_RESET // Redefinição de senha
+}
+
+// Link de uso único (convite / redefinir senha). Sem envio de e-mail: o administrador copia e envia o link.
+model UserToken {
+  id          String        @id @default(uuid())
+  userId      String
+  type        UserTokenType
+  tokenHash   String        @unique
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdById String?
+  createdAt   DateTime      @default(now())
+
+  user      User  @relation("TokenOwner", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy User? @relation("TokenIssuer", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([userId, type])
+  @@map("user_tokens")
+}
+
+model CompanyUser {
+  id          String   @id @default(uuid())
+  userId      String
+  companyId   String
+  role        UserRole @default(FINANCIAL_OPERATOR)
+  isDefault   Boolean  @default(false)
+  permissions Json? // Permissões granulares customizadas
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, companyId])
+  @@index([companyId])
+  @@index([userId])
+  @@map("company_users")
+}
+
+// ----------------------------------------------------------------------------
+// CONTAS BANCÁRIAS / CARTEIRAS / CAIXA
+// ----------------------------------------------------------------------------
+
+model BankAccount {
+  id                 String      @id @default(uuid())
+  companyId          String
+  name               String // Ex: "Itaú Operacional", "Bradesco Cobrança", "Caixa Pequeno"
+  type               AccountType @default(CHECKING)
+  bankCode           String? // Ex: "341" (Itaú), "237" (Bradesco), "001" (BB), "260" (Nubank)
+  bankName           String? // Nome do Banco
+  agency             String? // Agência com dígito
+  accountNumber      String? // Conta corrente
+  accountDigit       String? // Dígito verificador
+  holderType         PersonType  @default(LEGAL) // Titularidade: PJ ou PF
+  initialBalance     Decimal     @default(0.00) @db.Decimal(15, 2)
+  initialBalanceDate DateTime    @default(now())
+  currentBalance     Decimal     @default(0.00) @db.Decimal(15, 2)
+  color              String?     @default("#3b82f6") // Cor para gráficos/UI
+  isDefault          Boolean     @default(false)
+  isActive           Boolean     @default(true)
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  company       Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  transactions  Transaction[]
+  importBatches ImportBatch[]
+  payables      Payable[]
+  receivables   Receivable[]
+
+  @@index([companyId, isActive])
+  @@map("bank_accounts")
+}
+
+// ----------------------------------------------------------------------------
+// PLANO DE CONTAS & DRE GERENCIAL
+// ----------------------------------------------------------------------------
+
+model Category {
+  id              String       @id @default(uuid())
+  companyId       String
+  parentId        String? // Auto-relacionamento para Níveis Hierárquicos
+  code            String? // Código contábil (Ex: 1.01.002, 3.02.001)
+  name            String // Nome da Categoria
+  type            CategoryType // INCOME, EXPENSE, TRANSFER
+  section         DRESection? // Seção da DRE (null = fora da DRE, ex.: transferências entre contas)
+  isGroup         Boolean      @default(false) // Subgrupo: agrupa categorias dentro da seção
+  isDREApplicable Boolean      @default(true) // Falso para aportes, distribuição de lucros, transferências
+  isSystem        Boolean      @default(false) // Categorias de sistema protegidas
+  color           String? // Cor de identificação
+  orderIndex      Int          @default(0)
+  isActive        Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  company      Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  parent       Category?            @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children     Category[]           @relation("CategoryHierarchy")
+  transactions Transaction[]
+  rules        ReconciliationRule[]
+  payables     Payable[]
+  receivables  Receivable[]
+  recurrences  Recurrence[]
+  splits       EntrySplit[]
+  interestOf   Receivable[]         @relation("ReceivableInterestCategory")
+  discountOf   Receivable[]         @relation("ReceivableDiscountCategory")
+  interestOfP  Payable[]            @relation("PayableInterestCategory")
+  discountOfP  Payable[]            @relation("PayableDiscountCategory")
+
+  @@index([companyId, type])
+  @@index([companyId, section])
+  @@index([companyId, parentId])
+  @@map("categories")
+}
+
+// ----------------------------------------------------------------------------
+// CENTROS DE CUSTO / PROJETOS / FILIAIS
+// ----------------------------------------------------------------------------
+
+model CostCenter {
+  id          String   @id @default(uuid())
+  companyId   String
+  code        String? // Ex: "CC-01"
+  name        String // Ex: "Operações", "Comercial", "Projeto Alpha"
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company      Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+  rules        ReconciliationRule[]
+  payables     Payable[]
+  receivables  Receivable[]
+  splits       EntrySplit[]
+
+  @@index([companyId, isActive])
+  @@map("cost_centers")
+}
+
+// ----------------------------------------------------------------------------
+// CONTATOS (CLIENTES, FORNECEDORES, COLABORADORES, SÓCIOS)
+// ----------------------------------------------------------------------------
+
+model Contact {
+  id                String      @id @default(uuid())
+  companyId         String
+  type              ContactType @default(SUPPLIER)
+  personType        PersonType  @default(LEGAL)
+  name              String // Razão Social / Nome Completo
+  tradeName         String? // Nome Fantasia
+  document          String? // CPF ou CNPJ
+  cityReg           String? // Inscrição Municipal
+  email             String?
+  phone             String?
+  mobile            String?
+  contactPerson     String? // Pessoa de contato
+  website           String?
+  address           String?
+  addressNumber     String?
+  addressComplement String?
+  district          String?
+  city              String?
+  cityIbgeCode      String?
+  state             String?
+  postalCode        String?
+  country           String? // País (contatos do exterior)
+  bankDetails       Json? // Chave Pix, Banco, Agência, Conta
+  notes             String?
+  isActive          Boolean     @default(true)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  company      Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+  rules        ReconciliationRule[]
+  payables     Payable[]
+  receivables  Receivable[]
+  annotations  ContactNote[]
+  recurrences  Recurrence[]
+
+  @@index([companyId, type])
+  @@index([companyId, document])
+  @@map("contacts")
+}
+
+// ----------------------------------------------------------------------------
+// LOTES DE IMPORTAÇÃO (OFX / EXCEL / CSV) - RASTREABILIDADE TOTAL
+// ----------------------------------------------------------------------------
+
+model ImportBatch {
+  id                String   @id @default(uuid())
+  companyId         String
+  bankAccountId     String
+  importedByUserId  String
+  fileName          String
+  fileType          String // "OFX", "XLSX", "CSV"
+  fileSize          Int
+  fileHash          String // SHA-256 para prevenção de upload duplicado acidental
+  totalTransactions Int      @default(0)
+  reconciledCount   Int      @default(0)
+  pendingCount      Int      @default(0)
+  totalIncome       Decimal  @default(0.00) @db.Decimal(15, 2)
+  totalExpense      Decimal  @default(0.00) @db.Decimal(15, 2)
+  status            String   @default("PROCESSED") // PROCESSED, ROLLED_BACK
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  company        Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  bankAccount    BankAccount   @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  importedByUser User          @relation("BatchImporter", fields: [importedByUserId], references: [id])
+  transactions   Transaction[]
+
+  @@index([companyId, bankAccountId])
+  @@index([companyId, fileHash])
+  @@map("import_batches")
+}
+
+// ----------------------------------------------------------------------------
+// TRANSAÇÕES FINANCEIRAS (MOTOR DO EXTRATO & CONCILIAÇÃO)
+// ----------------------------------------------------------------------------
+
+model Transaction {
+  id                   String  @id @default(uuid())
+  companyId            String // Isolamento Multi-tenant estrito
+  bankAccountId        String // Conta Bancária vinculada
+  importBatchId        String? // Lote de importação que gerou o registro
+  categoryId           String? // Categoria no Plano de Contas (DRE)
+  costCenterId         String? // Centro de Custo
+  contactId            String? // Fornecedor, Cliente ou Sócio
+  reconciliationRuleId String? // Regra automática que classificou
+
+  type              TransactionType // CREDIT (+), DEBIT (-)
+  amount            Decimal         @db.Decimal(15, 2)
+  date              DateTime // Data da movimentação no extrato
+  description       String // Descrição original do extrato/OFX (MEMO)
+  customDescription String? // Descrição gerencial / observação editada
+  fitid             String? // FITID único do OFX (evita duplicidade bancária)
+  checknum          String? // Número do documento / cheque / TED
+
+  reconciliationStatus ReconciliationStatus @default(PENDING)
+  reconciledAt         DateTime?
+  reconciledByUserId   String?
+  settlements          EntrySettlement[] // Baixas de contas a pagar/receber quitadas por esta linha
+  splits               EntrySplit[] // Rateio da linha (quando categorizada direto, sem conta vinculada)
+
+  origin                TransactionOrigin @default(OFX_IMPORT)
+  isTransfer            Boolean           @default(false)
+  transferCounterpartId String? // Transação espelho na outra conta bancária
+
+  tags        String[] @default([])
+  attachments Json? // URLs de comprovantes ou notas fiscais anexadas
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company          Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  bankAccount      BankAccount         @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  importBatch      ImportBatch?        @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+  category         Category?           @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  costCenter       CostCenter?         @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
+  contact          Contact?            @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  rule             ReconciliationRule? @relation(fields: [reconciliationRuleId], references: [id], onDelete: SetNull)
+  reconciledByUser User?               @relation("TransactionReconciler", fields: [reconciledByUserId], references: [id])
+
+  @@index([companyId, bankAccountId, date])
+  @@index([companyId, reconciliationStatus])
+  @@index([companyId, categoryId])
+  @@index([companyId, fitid])
+  @@map("transactions")
+}
+
+// ----------------------------------------------------------------------------
+// REGRAS DE CONCILIAÇÃO & AUTOMAÇÃO BPO
+// ----------------------------------------------------------------------------
+
+model ReconciliationRule {
+  id                 String        @id @default(uuid())
+  companyId          String
+  name               String // Ex: "Categorizar Tarifas Itaú", "Posto Ipiranga -> Combustível"
+  matchType          RuleMatchType @default(CONTAINS)
+  pattern            String // Ex: "TAR MULT CONTA", "UBER *TRIP", "FOLHA PAGTO"
+  targetCategoryId   String
+  targetContactId    String?
+  targetCostCenterId String?
+  autoReconcile      Boolean       @default(false) // Se true, marca como RECONCILED. Se false, marca como SUGGESTED
+  priority           Int           @default(0) // Ordem de execução
+  isActive           Boolean       @default(true)
+  timesApplied       Int           @default(0) // Contador de execuções
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  company          Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  targetCategory   Category      @relation(fields: [targetCategoryId], references: [id], onDelete: Cascade)
+  targetContact    Contact?      @relation(fields: [targetContactId], references: [id], onDelete: SetNull)
+  targetCostCenter CostCenter?   @relation(fields: [targetCostCenterId], references: [id], onDelete: SetNull)
+  transactions     Transaction[]
+
+  @@index([companyId, isActive])
+  @@map("reconciliation_rules")
+}
+
+// ----------------------------------------------------------------------------
+// CONTAS A PAGAR (PREVISÃO FINANCEIRA & VÍNCULO DE CONCILIAÇÃO)
+// ----------------------------------------------------------------------------
+
+model Payable {
+  id                 String        @id @default(uuid())
+  companyId          String
+  bankAccountId      String? // Conta da última baixa
+  categoryId         String?
+  costCenterId       String?
+  contactId          String? // Fornecedor / funcionário / sócio
+  recurrenceId       String? // Recorrência/parcelamento que gerou o lançamento
+  installmentNumber  Int? // Nº da parcela/ocorrência (ex.: 2 de "2/12")
+  installmentTotal   Int? // Total de parcelas (null = recorrência sem fim)
+  description        String
+  documentNumber     String? // Referência: Nº do boleto / NF-e
+  dueDate            DateTime // Vencimento (agendamento)
+  issueDate          DateTime      @default(now()) // Competência (DRE por competência)
+  expectedDate       DateTime? // Previsto para
+  amount             Decimal       @db.Decimal(15, 2) // Valor original
+  interestFine       Decimal       @default(0.00) @db.Decimal(15, 2) // Juros/multa
+  discount           Decimal       @default(0.00) @db.Decimal(15, 2)
+  interestCategoryId String? // Categoria dos juros/multa (padrão: categoria do sistema, com rateio ativo)
+  discountCategoryId String? // Categoria do desconto (ex.: "Taxas de cartão" na diferença da maquininha)
+  settledAmount      Decimal       @default(0.00) @db.Decimal(15, 2) // Total já baixado
+  settledAt          DateTime? // Data da última baixa
+  status             PaymentStatus @default(PENDING)
+  isStarred          Boolean       @default(false)
+  scheduledAtBank    Boolean       @default(false) // Pagamento já programado no banco
+  notes              String? // Detalhamento
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  company          Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  bankAccount      BankAccount?      @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
+  category         Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  costCenter       CostCenter?       @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
+  contact          Contact?          @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  recurrence       Recurrence?       @relation(fields: [recurrenceId], references: [id], onDelete: SetNull)
+  interestCategory Category?         @relation("PayableInterestCategory", fields: [interestCategoryId], references: [id], onDelete: SetNull)
+  discountCategory Category?         @relation("PayableDiscountCategory", fields: [discountCategoryId], references: [id], onDelete: SetNull)
+  settlements      EntrySettlement[]
+  splits           EntrySplit[]
+
+  @@index([companyId, dueDate])
+  @@index([companyId, status])
+  @@index([recurrenceId])
+  @@map("payables")
+}
+
+// ----------------------------------------------------------------------------
+// CONTAS A RECEBER (PREVISÃO FINANCEIRA & VÍNCULO DE CONCILIAÇÃO)
+// ----------------------------------------------------------------------------
+
+model Receivable {
+  id                 String        @id @default(uuid())
+  companyId          String
+  bankAccountId      String? // Conta da última baixa
+  categoryId         String?
+  costCenterId       String?
+  contactId          String? // Cliente
+  recurrenceId       String? // Recorrência/parcelamento que gerou o lançamento
+  installmentNumber  Int? // Nº da parcela/ocorrência (ex.: 2 de "2/12")
+  installmentTotal   Int? // Total de parcelas (null = recorrência sem fim)
+  description        String
+  documentNumber     String? // Referência: Nº da NF / contrato / duplicata
+  dueDate            DateTime // Vencimento (agendamento)
+  issueDate          DateTime      @default(now()) // Competência (DRE por competência)
+  expectedDate       DateTime? // Previsto para
+  amount             Decimal       @db.Decimal(15, 2) // Valor original
+  interestFine       Decimal       @default(0.00) @db.Decimal(15, 2) // Juros/multa
+  discount           Decimal       @default(0.00) @db.Decimal(15, 2)
+  interestCategoryId String? // Categoria dos juros/multa (padrão: categoria do sistema, com rateio ativo)
+  discountCategoryId String? // Categoria do desconto (ex.: "Taxas de cartão" na diferença da maquininha)
+  settledAmount      Decimal       @default(0.00) @db.Decimal(15, 2) // Total já baixado
+  settledAt          DateTime? // Data da última baixa
+  status             PaymentStatus @default(PENDING)
+  isStarred          Boolean       @default(false)
+  notes              String? // Detalhamento
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  company          Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  bankAccount      BankAccount?      @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
+  category         Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  costCenter       CostCenter?       @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
+  contact          Contact?          @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  recurrence       Recurrence?       @relation(fields: [recurrenceId], references: [id], onDelete: SetNull)
+  interestCategory Category?         @relation("ReceivableInterestCategory", fields: [interestCategoryId], references: [id], onDelete: SetNull)
+  discountCategory Category?         @relation("ReceivableDiscountCategory", fields: [discountCategoryId], references: [id], onDelete: SetNull)
+  settlements      EntrySettlement[]
+  splits           EntrySplit[]
+
+  @@index([companyId, dueDate])
+  @@index([companyId, status])
+  @@index([recurrenceId])
+  @@map("receivables")
+}
+
+// ----------------------------------------------------------------------------
+// ANOTAÇÕES DE CONTATOS
+// ----------------------------------------------------------------------------
+
+model ContactNote {
+  id        String   @id @default(uuid())
+  companyId String
+  contactId String
+  authorId  String?
+  text      String
+  createdAt DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  author  User?   @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([contactId, createdAt])
+  @@map("contact_notes")
+}
+
+// ----------------------------------------------------------------------------
+// RECORRÊNCIAS E PARCELAMENTOS (GERAM CONTAS A PAGAR/RECEBER)
+// ----------------------------------------------------------------------------
+
+enum EntryDirection {
+  RECEIVABLE
+  PAYABLE
+}
+
+enum RecurrenceType {
+  RECURRING // Recorrência (aluguel, mensalidade...)
+  INSTALLMENT // Parcelamento de um valor total
+}
+
+enum RecurrenceFrequency {
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  BIMONTHLY
+  QUARTERLY
+  SEMIANNUAL
+  ANNUAL
+}
+
+enum RecurrenceStatus {
+  ACTIVE
+  ENDED
+}
+
+model Recurrence {
+  id             String              @id @default(uuid())
+  companyId      String
+  direction      EntryDirection
+  type           RecurrenceType
+  frequency      RecurrenceFrequency @default(MONTHLY)
+  contactId      String?
+  categoryId     String?
+  costCenterId   String?
+  description    String
+  documentNumber String?
+  amount         Decimal             @db.Decimal(15, 2) // Valor por ocorrência (no parcelamento, da 1ª parcela)
+  startDate      DateTime // 1º vencimento
+  occurrences    Int? // Quantidade total (null = sem data de término)
+  status         RecurrenceStatus    @default(ACTIVE)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contact     Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  category    Category?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  receivables Receivable[]
+  payables    Payable[]
+  splits      EntrySplit[] // Modelo de rateio copiado para cada ocorrência
+
+  @@index([companyId, direction, status])
+  @@map("recurrences")
+}
+
+// ----------------------------------------------------------------------------
+// BAIXAS: VÍNCULO ENTRE LINHA DO EXTRATO/LANÇAMENTO E CONTAS A PAGAR/RECEBER
+// Uma linha pode quitar vários lançamentos e um lançamento pode ter várias baixas.
+// ----------------------------------------------------------------------------
+
+model EntrySettlement {
+  id            String   @id @default(uuid())
+  companyId     String
+  transactionId String
+  receivableId  String?
+  payableId     String?
+  amount        Decimal  @db.Decimal(15, 2) // Parte da linha alocada a este lançamento
+  createdAt     DateTime @default(now())
+
+  company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  receivable  Receivable? @relation(fields: [receivableId], references: [id], onDelete: Cascade)
+  payable     Payable?    @relation(fields: [payableId], references: [id], onDelete: Cascade)
+
+  @@index([transactionId])
+  @@index([receivableId])
+  @@index([payableId])
+  @@map("entry_settlements")
+}
+
+// ----------------------------------------------------------------------------
+// RATEIO: divide o valor de um lançamento, linha do extrato ou recorrência
+// entre categorias e centros de custo. Valor com sinal relativo ao dono:
+// positivo = mesma natureza (ex.: receita num recebimento), negativo = natureza
+// oposta (ex.: taxa da maquininha num recebimento líquido). A soma = valor do dono.
+// ----------------------------------------------------------------------------
+
+model EntrySplit {
+  id            String   @id @default(uuid())
+  companyId     String
+  receivableId  String?
+  payableId     String?
+  transactionId String?
+  recurrenceId  String?
+  categoryId    String
+  costCenterId  String?
+  amount        Decimal  @db.Decimal(15, 2)
+  orderIndex    Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  receivable  Receivable?  @relation(fields: [receivableId], references: [id], onDelete: Cascade)
+  payable     Payable?     @relation(fields: [payableId], references: [id], onDelete: Cascade)
+  transaction Transaction? @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  recurrence  Recurrence?  @relation(fields: [recurrenceId], references: [id], onDelete: Cascade)
+  category    Category     @relation(fields: [categoryId], references: [id], onDelete: NoAction)
+  costCenter  CostCenter?  @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
+
+  @@index([receivableId])
+  @@index([payableId])
+  @@index([transactionId])
+  @@index([recurrenceId])
+  @@index([companyId, categoryId])
+  @@map("entry_splits")
+}
