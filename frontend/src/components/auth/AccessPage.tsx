@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { AlertCircle, Loader2 } from 'lucide-react';
-import { api, errorMessage } from '../../lib/api';
+import { api, errorMessage, setAuthToken } from '../../lib/api';
 import { AuthUser } from '../../context/AuthContext';
 import { AuthLayout, PasswordInput } from './AuthLayout';
 
@@ -35,7 +35,8 @@ export const AccessPage: React.FC<{ token: string; onSignedIn: (user: AuthUser) 
     setBusy(true);
     setError(null);
     try {
-      const { user } = await api.post<{ user: AuthUser }>(`/auth/access/${encodeURIComponent(token)}`, { password });
+      const { user, token: sessionToken } = await api.post<{ user: AuthUser; token?: string }>(`/auth/access/${encodeURIComponent(token)}`, { password });
+      if (sessionToken) setAuthToken(sessionToken);
       onSignedIn(user);
     } catch (err) {
       setError(errorMessage(err));

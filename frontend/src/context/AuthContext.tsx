@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { api, setUnauthorizedHandler } from '../lib/api';
+import { api, setAuthToken, setUnauthorizedHandler } from '../lib/api';
 
 export interface AuthUser {
   id: string;
@@ -42,6 +42,7 @@ export function useAuthState() {
 
   const logout = useCallback(async () => {
     await api.post('/auth/logout').catch(() => undefined);
+    setAuthToken(null);
     setExpired(false);
     setUser(null);
   }, []);

@@ -53,10 +53,11 @@ export async function createSession(userId: string, userAgent?: string) {
 }
 
 export function sessionCookie(token: string | null) {
-  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+  const isProd = process.env.NODE_ENV === 'production';
+  const sameSite = isProd ? '; SameSite=None; Secure' : '; SameSite=Lax';
   return token
-    ? `${SESSION_COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_DAYS * 86_400}${secure}`
-    : `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secure}`;
+    ? `${SESSION_COOKIE}=${token}; HttpOnly${sameSite}; Path=/; Max-Age=${SESSION_DAYS * 86_400}`
+    : `${SESSION_COOKIE}=; HttpOnly${sameSite}; Path=/; Max-Age=0`;
 }
 
 export function readCookie(header: string | undefined, name: string) {

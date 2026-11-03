@@ -4,6 +4,23 @@
  */
 const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3333/api';
 
+const TOKEN_KEY = 'syc_session_token';
+export const setAuthToken = (token: string | null) => {
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // storage indisponível
+  }
+};
+export const getAuthToken = () => {
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+};
+
 /** Chamado quando a API responde 401 (sessão expirada): o app volta para a tela de login */
 let onUnauthorized: (() => void) | null = null;
 export const setUnauthorizedHandler = (fn: (() => void) | null) => {
@@ -22,11 +39,15 @@ export class ApiError extends Error {
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   let res: Response;
+  const token = getAuthToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
   try {
     res = await fetch(`${BASE_URL}${path}`, {
       method,
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
@@ -36,7 +57,10 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   if (res.status === 204) return undefined as T;
   const data = await res.json().catch(() => null);
   // 401 fora das rotas de login = sessão expirou
-  if (res.status === 401 && !path.startsWith('/auth/')) onUnauthorized?.();
+  if (res.status === 401 && !path.startsWith('/auth/')) {
+    setAuthToken(null);
+    onUnauthorized?.();
+  }
   if (!res.ok) throw new ApiError(res.status, data?.error ?? `Erro ${res.status}`, data?.details);
   return data as T;
 }
