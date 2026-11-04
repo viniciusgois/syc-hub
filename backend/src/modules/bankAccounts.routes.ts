@@ -94,6 +94,12 @@ bankAccountsRouter.get('/:id/statement', async (req, res) => {
     }),
     prisma.transaction.count({ where: { bankAccountId: account.id, reconciliationStatus: { in: ['PENDING', 'SUGGESTED'] } } }),
   ]);
+  // Movimentos anteriores à data do saldo inicial não entram no saldo: o extrato avisa (ex.: transferência importada depois)
+  const beforeInitial = await prisma.transaction.aggregate({
+    where: { ...reconciled, date: { lt: account.initialBalanceDate } },
+    _count: { _all: true },
+    _min: { date: true },
+  });
   const counterparts = await prisma.transaction.findMany({
     where: { id: { in: rows.map((r) => r.transferCounterpartId).filter((v): v is string => !!v) } },
     select: { id: true, bankAccount: { select: { id: true, name: true } } },
@@ -137,7 +143,17 @@ bankAccountsRouter.get('/:id/statement', async (req, res) => {
     daily.push({ date: key, balance: running });
   }
 
-  res.json({ account: { id: account.id, name: account.name, currentBalance: account.currentBalance }, from: q.from, to: q.to, previousBalance, finalBalance: balance, pendingCount: pending, rows: lines, daily });
+  res.json({
+    account: { id: account.id, name: account.name, currentBalance: account.currentBalance, initialBalanceDate: account.initialBalanceDate },
+    from: q.from,
+    to: q.to,
+    previousBalance,
+    finalBalance: balance,
+    pendingCount: pending,
+    beforeInitial: beforeInitial._count._all ? { count: beforeInitial._count._all, firstDate: beforeInitial._min.date } : null,
+    rows: lines,
+    daily,
+  });
 });
 
 bankAccountsRouter.post('/', async (req, res) => {

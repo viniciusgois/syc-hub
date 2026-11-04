@@ -89,6 +89,8 @@ Valores monetários saem como `number` e datas em ISO 8601.
 - **Transferências do Nibo (`services/niboTransfers.ts`):** o Excel traz cada transferência em duas linhas (saída e
   entrada); o frontend junta pela data, contas e valor. Contas casadas pelo nome com as do passo 2; transferências já
   existentes (mesma data, contas e valor) ficam de fora. Cada uma vira os dois lados conciliados (`isTransfer`).
+  A prévia aponta transferências anteriores à data do saldo inicial de uma conta (não entrariam no saldo) e sugere
+  recuar a data; o extrato (`GET /bank-accounts/:id/statement`, campo `beforeInitial`) avisa o mesmo para qualquer conta.
 - **Lançamentos com rateio / pagos em várias vezes:** linhas com o mesmo "Agendamento" são um lançamento só — rateio
   (mesmo pagamento repetido, uma parte por linha) vira `EntrySplit`; pagamentos separados viram uma baixa cada.
 - **Correção de português (`services/ptCorrections.ts`):** só nomes de categorias/subgrupos, por regras fixas (acentos de

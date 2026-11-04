@@ -35,7 +35,7 @@ const key = (date: string, fromId: string, toId: string, amount: number) => `${d
 
 /** Prévia: contas casadas pelo nome, transferências que já existem e o efeito em cada conta */
 export async function analyzeNiboTransfers(companyId: string, transfers: NiboTransfer[], accountMap: Record<string, string> = {}) {
-  const accounts = await prisma.bankAccount.findMany({ where: { companyId }, select: { id: true, name: true, isActive: true } });
+  const accounts = await prisma.bankAccount.findMany({ where: { companyId }, select: { id: true, name: true, isActive: true, initialBalanceDate: true } });
   const names = [...new Set(transfers.flatMap((t) => [t.from, t.to]))];
   const byName = new Map(accounts.map((a) => [norm(a.name), a.id]));
   const resolved = new Map(names.map((n) => [n, accountMap[n] && accounts.some((a) => a.id === accountMap[n]) ? accountMap[n] : (byName.get(norm(n)) ?? null)]));
@@ -82,8 +82,23 @@ export async function analyzeNiboTransfers(companyId: string, transfers: NiboTra
     effect.set(t.to, inc);
   }
 
+  // Transferências antes da data do saldo inicial da conta não entram no saldo (o saldo inicial já "contém" o passado)
+  const beforeInitial = accounts
+    .map((a) => {
+      const dates = plan
+        .filter((p) => !p.skip && (p.fromId === a.id || p.toId === a.id))
+        .map((p) => p.date)
+        .filter((d) => day(d) < a.initialBalanceDate)
+        .sort();
+      if (!dates.length) return null;
+      const suggested = new Date(day(dates[0]).getTime() - 86_400_000).toISOString().slice(0, 10);
+      return { accountId: a.id, name: a.name, initialBalanceDate: a.initialBalanceDate.toISOString().slice(0, 10), count: dates.length, firstDate: dates[0], suggestedDate: suggested };
+    })
+    .filter((v): v is NonNullable<typeof v> => !!v);
+
   return {
     transfers: plan,
+    beforeInitial,
     count: plan.length,
     toCreate: plan.filter((p) => !p.skip && p.fromId && p.toId).length,
     skipped: plan.filter((p) => p.skip).length,

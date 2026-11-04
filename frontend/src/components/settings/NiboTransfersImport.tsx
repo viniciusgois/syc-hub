@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, ArrowRight, CheckCircle2, Loader2, UploadCloud } from 'lucide-react';
 import { useCompany } from '../../context/CompanyContext';
 import { api, errorMessage } from '../../lib/api';
@@ -14,10 +14,17 @@ interface Preview {
   accounts: { name: string; accountId: string | null }[];
   effect: { name: string; in: number; out: number; net: number }[];
   availableAccounts: { id: string; name: string }[];
+  /** Contas com transferências antes da data do saldo inicial (essas não entrariam no saldo) */
+  beforeInitial: { accountId: string; name: string; initialBalanceDate: string; count: number; firstDate: string; suggestedDate: string }[];
 }
 
+const brDate = (v: string) => v.slice(0, 10).split('-').reverse().join('/');
+
 /** Passo 3 da migração: transferências entre contas (relatório "Transferências" do Nibo, em Excel) */
-export const NiboTransfersImport: React.FC<{ onImported: () => void }> = ({ onImported }) => {
+export const NiboTransfersImport: React.FC<{ onImported: () => void; /** Logo depois de concluir os lançamentos (passo 2): destaca e leva até aqui */ nextStep?: boolean }> = ({
+  onImported,
+  nextStep,
+}) => {
   const { currentCompany, notify, refreshLedger } = useCompany();
   const [file, setFile] = useState<(NiboTransfersFile & { fileName: string }) | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -26,6 +33,12 @@ export const NiboTransfersImport: React.FC<{ onImported: () => void }> = ({ onIm
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const sectionRef = useRef<HTMLElement>(null);
+
+  // Ao aparecer como próxima etapa, rola até ela
+  useEffect(() => {
+    if (nextStep) sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [nextStep]);
   const base = `/companies/${currentCompany.id}/nibo-imports/transfers`;
 
   const loadPreview = async (f: NiboTransfersFile & { fileName: string }, map: Record<string, string>) => {
@@ -82,12 +95,30 @@ export const NiboTransfersImport: React.FC<{ onImported: () => void }> = ({ onIm
     }
   };
 
+  /** Recua a data do saldo inicial (mantém o valor) para a transferência entrar no saldo */
+  const adjustInitialDate = async (a: Preview['beforeInitial'][number]) => {
+    if (!file) return;
+    setBusy('importing');
+    setError(null);
+    try {
+      await api.patch(`/companies/${currentCompany.id}/bank-accounts/${a.accountId}`, { initialBalanceDate: a.suggestedDate });
+      await refreshLedger();
+      notify(`${a.name}: data do saldo inicial ajustada para ${brDate(a.suggestedDate)}`);
+      await loadPreview(file, accountMap);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const missing = preview?.accounts.filter((a) => !a.accountId) ?? [];
 
   return (
-    <section className="border border-slate-200 rounded p-5 space-y-4">
+    <section ref={sectionRef} className={`border rounded p-5 space-y-4 scroll-mt-4 ${nextStep && done === null ? 'border-nibo-blue ring-2 ring-nibo-blueLight' : 'border-slate-200'}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
+          {nextStep && done === null && <p className="text-[11px] font-semibold uppercase tracking-wide text-nibo-blue mb-1">Próxima etapa</p>}
           <h2 className="text-base font-medium text-slate-800">3. Transferências entre contas (Excel)</h2>
           <p className="text-sm text-slate-600 mt-0.5">
             No Nibo: <em>Relatórios › Transferências</em>, do período inteiro, exportado em Excel. Faça depois dos lançamentos: as contas são as que o passo 2 criou.
@@ -155,6 +186,33 @@ export const NiboTransfersImport: React.FC<{ onImported: () => void }> = ({ onIm
                       </option>
                     ))}
                   </select>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {preview.beforeInitial.length > 0 && (
+            <div className="rounded border border-amber-200 bg-amber-50 p-3 space-y-2">
+              <p className="text-sm text-amber-900 flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                <span>
+                  Há transferências antes da data do saldo inicial da conta. Elas seriam importadas, mas <strong>não entrariam no saldo</strong> (o saldo inicial já representa o
+                  passado). Recue a data do saldo inicial para o dia anterior à primeira transferência; o valor do saldo inicial continua o mesmo.
+                </span>
+              </p>
+              {preview.beforeInitial.map((a) => (
+                <div key={a.accountId} className="flex flex-wrap items-center justify-between gap-3 pl-6">
+                  <span className="text-sm text-slate-800">
+                    <strong>{a.name}</strong>: {a.count} transferência(s) a partir de {brDate(a.firstDate)}; saldo inicial em {brDate(a.initialBalanceDate)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => adjustInitialDate(a)}
+                    disabled={!!busy}
+                    className="h-8 px-3 rounded border border-amber-400 bg-white text-sm text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                  >
+                    Ajustar data do saldo inicial para {brDate(a.suggestedDate)}
+                  </button>
                 </div>
               ))}
             </div>

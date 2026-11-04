@@ -39,6 +39,9 @@ interface StatementRow {
 }
 
 interface Statement {
+  account: { initialBalanceDate: string };
+  /** Movimentos conciliados antes da data do saldo inicial: não entram no saldo */
+  beforeInitial: { count: number; firstDate: string } | null;
   previousBalance: number;
   finalBalance: number;
   pendingCount: number;
@@ -287,6 +290,19 @@ export const AccountsAndStatements: React.FC<AccountsAndStatementsProps> = ({ on
           Extrato {loading && <Loader2 className="w-4 h-4 text-nibo-blue animate-spin" />}
         </h3>
         {error && <p className="text-sm text-rose-600 mb-2">{error}</p>}
+        {statement?.beforeInitial && (
+          <div role="status" className="mb-3 px-3 py-2 rounded border border-amber-200 bg-amber-50 text-sm text-amber-900 flex flex-wrap items-center justify-between gap-3 print:hidden">
+            <span>
+              {statement.beforeInitial.count} movimento(s) desta conta, a partir de {shortDate(statement.beforeInitial.firstDate.slice(0, 10))}, são anteriores à data do saldo inicial (
+              {shortDate(statement.account.initialBalanceDate.slice(0, 10))}) e <strong>não entram no saldo</strong>.
+            </span>
+            {can('ADMIN') && (
+              <button type="button" onClick={() => setEditing(true)} className="text-sm text-nibo-blue hover:underline">
+                Ajustar data do saldo inicial
+              </button>
+            )}
+          </div>
+        )}
         <div className="border border-slate-200 rounded overflow-x-auto">
           <table className="w-full text-[13px] text-slate-700">
             <thead className="bg-slate-100 text-slate-700">

@@ -487,6 +487,9 @@ export const NiboImportSettings: React.FC = () => {
           </section>
         )}
 
+        {/* Concluídos os lançamentos, segue direto para as transferências */}
+        {result && <NiboTransfersImport onImported={loadHistory} nextStep />}
+
         {/* Histórico */}
         {history.length > 0 && (
           <section>
