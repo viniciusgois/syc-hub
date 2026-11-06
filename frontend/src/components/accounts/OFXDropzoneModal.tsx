@@ -26,7 +26,7 @@ interface OFXDropzoneModalProps {
   kind?: ImportKind;
 }
 
-export type ImportKind = 'OFX' | 'SHEET';
+export type ImportKind = 'OFX' | 'SHEET' | 'PDF';
 
 /** Planilha modelo: Data | Descrição | Valor (negativo = saída) */
 function downloadSheetTemplate() {

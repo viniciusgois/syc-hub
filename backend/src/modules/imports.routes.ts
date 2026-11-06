@@ -1,4 +1,5 @@
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
+import multer from 'multer';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { HttpError, companyIdOf, idParam, notFound } from '../lib/http.js';
@@ -8,6 +9,7 @@ import { importStatement, type StatementLine } from '../services/importStatement
 import { recalculateBalance } from '../services/balance.js';
 import { linkedEntries, recomputeEntry } from '../services/entries.js';
 import { undoTransfer } from '../services/transfers.js';
+import { extractPdfStatement } from '../services/pdfStatement.js';
 
 export const importsRouter = Router({ mergeParams: true });
 
@@ -20,7 +22,9 @@ const baseImportSchema = z.object({
 const ofxImportSchema = baseImportSchema.extend({ content: z.string().min(1) });
 
 const rowsImportSchema = baseImportSchema.extend({
-  fileType: z.enum(['XLSX', 'CSV']).default('XLSX'),
+  fileType: z.enum(['XLSX', 'CSV', 'PDF']).default('XLSX'),
+  /** Hash do arquivo original (PDF): impede importar o mesmo arquivo duas vezes */
+  fileHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   rows: z
     .array(
       z.object({
@@ -93,7 +97,7 @@ importsRouter.post('/ofx', currentUser, async (req, res) => {
 
 /** Importa linhas já lidas de uma planilha (XLSX/CSV) pelo frontend */
 importsRouter.post('/rows', currentUser, async (req, res) => {
-  const { bankAccountId, fileName, fileType, rows, dryRun } = rowsImportSchema.parse(req.body);
+  const { bankAccountId, fileName, fileType, rows, dryRun, fileHash } = rowsImportSchema.parse(req.body);
   const account = await findAccount(companyIdOf(req), bankAccountId);
 
   const serialized = JSON.stringify(rows);
@@ -115,10 +119,29 @@ importsRouter.post('/rows', currentUser, async (req, res) => {
   const result = await importStatement(
     account,
     userIdOf(res),
-    { fileName, fileType, fileSize: Buffer.byteLength(serialized), fileHash: sha256(serialized), lines },
+    { fileName, fileType, fileSize: Buffer.byteLength(serialized), fileHash: fileHash ?? sha256(serialized), lines },
     { dryRun },
   );
   res.status(dryRun || !result.batch ? 200 : 201).json(result);
+});
+
+/** PDF em memória, até 20 MB (o arquivo não é guardado: só lido pela IA) */
+const pdfUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024, files: 1 } }).single('file');
+const receivePdf: RequestHandler = (req, res, next) =>
+  pdfUpload(req, res, (err: unknown) => {
+    if (err instanceof multer.MulterError) {
+      next(new HttpError(err.code === 'LIMIT_FILE_SIZE' ? 413 : 400, err.code === 'LIMIT_FILE_SIZE' ? 'O PDF passa de 20 MB.' : `Envio inválido: ${err.message}`));
+    } else next(err);
+  });
+
+/**
+ * Lê um extrato ou fatura em PDF com IA e devolve as transações para revisão (rascunho).
+ * Não grava nada: depois de revisar, o frontend envia as linhas para POST /imports/rows com fileType PDF.
+ */
+importsRouter.post('/pdf/extract', receivePdf, async (req, res) => {
+  const { documentType } = z.object({ documentType: z.enum(['BANK_STATEMENT', 'CREDIT_CARD'], { message: 'Escolha se é extrato de conta corrente ou fatura de cartão' }) }).parse(req.body);
+  if (!req.file) throw new HttpError(400, 'Envie o arquivo PDF.');
+  res.json(await extractPdfStatement(req.file.buffer, documentType));
 });
 
 /** Desfaz uma importação: remove as transações do lote e recalcula o saldo */

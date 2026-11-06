@@ -183,6 +183,10 @@ export const ReconciliationView: React.FC<{
               <button type="button" role="menuitem" onClick={() => onOpenUpload(accountId, 'SHEET')} className="w-full px-4 py-2 text-left text-sm text-slate-800 hover:bg-slate-50 flex items-center gap-2">
                 <FileSpreadsheet className="w-4 h-4 text-slate-500" /> Extrato em planilha
               </button>
+              <button type="button" role="menuitem" onClick={() => onOpenUpload(accountId, 'PDF')} className="w-full px-4 py-2 text-left text-sm text-slate-800 hover:bg-slate-50 flex items-center gap-2">
+                <FileText className="w-4 h-4 text-slate-500" /> Extrato ou fatura em PDF
+                <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded bg-violet-100 text-violet-800">IA</span>
+              </button>
             </div>
           )}
         </div>

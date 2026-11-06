@@ -11,7 +11,7 @@ import { CreateCompanyModal } from '../components/companies/CreateCompanyModal';
 
 export type ImportRequest = { bankAccountId: string; fileName: string } & (
   | { kind: 'OFX'; content: string }
-  | { kind: 'ROWS'; fileType: 'XLSX' | 'CSV'; rows: { date: string; description: string; amount: number }[] }
+  | { kind: 'ROWS'; fileType: 'XLSX' | 'CSV' | 'PDF'; rows: { date: string; description: string; amount: number }[]; /** Hash do PDF original (evita importar o mesmo arquivo duas vezes) */ fileHash?: string }
 );
 
 export interface ImportPreviewLine {
@@ -371,6 +371,7 @@ export const CompanyProvider: React.FC<{ children: React.ReactNode }> = ({ child
             fileName: req.fileName,
             fileType: req.fileType,
             rows: req.rows,
+            fileHash: req.fileHash,
             dryRun,
           }),
     [companyPath],

@@ -40,7 +40,9 @@ export class ApiError extends Error {
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   let res: Response;
   const token = getAuthToken();
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  // FormData (envio de arquivo): o navegador define o Content-Type com o boundary
+  const isForm = body instanceof FormData;
+  const headers: Record<string, string> = isForm ? {} : { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   try {
@@ -48,7 +50,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       method,
       credentials: 'include',
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
     });
   } catch {
     throw new ApiError(0, 'Não foi possível conectar à API. Verifique se o backend está rodando.');
@@ -70,6 +72,8 @@ export const api = {
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body ?? {}),
   patch: <T>(path: string, body: unknown) => request<T>('PATCH', path, body),
   delete: <T = void>(path: string, body?: unknown) => request<T>('DELETE', path, body),
+  /** Envio de arquivo (multipart/form-data) */
+  upload: <T>(path: string, form: FormData) => request<T>('POST', path, form),
 };
 
 export const errorMessage = (err: unknown) =>

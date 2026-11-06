@@ -20,7 +20,7 @@ export interface StatementLine {
 
 export interface StatementFile {
   fileName: string;
-  fileType: 'OFX' | 'XLSX' | 'CSV';
+  fileType: 'OFX' | 'XLSX' | 'CSV' | 'PDF';
   fileSize: number;
   fileHash: string;
   lines: StatementLine[];

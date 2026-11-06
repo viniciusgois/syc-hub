@@ -47,6 +47,7 @@ Valores monetários saem como `number` e datas em ISO 8601.
 |---|---|
 | Empresas | `GET/POST /api/companies`, `GET/PATCH /api/companies/:id` (nova empresa já recebe o plano de contas padrão) |
 | Contas bancárias | `GET/POST /bank-accounts`, `GET/PATCH/DELETE /bank-accounts/:id` (lista inclui `unreconciledCount`; `isActive: false` = arquivada), `GET /bank-accounts/:id/statement?from&to` (extrato: saldo anterior, linhas conciliadas com saldo acumulado, saldo diário para o gráfico, `pendingCount`) |
+| Importar PDF (IA) | `POST /imports/pdf/extract` (multipart: `file` PDF até 20 MB + `documentType` `BANK_STATEMENT` ou `CREDIT_CARD`) devolve um rascunho `{ transactions: [{date, description, amount}], openingBalance, closingBalance, invoiceTotal, dueDate, fileHash }` sem gravar nada; a gravação é `POST /imports/rows` com `fileType: "PDF"` e `fileHash` (impede importar o mesmo PDF duas vezes) |
 | Migração do Nibo | `POST /nibo-imports/preview` (linhas do relatório "Unificado por lançamento" lidas pelo frontend → contas, categorias, totais e revisão; não grava), `POST /nibo-imports` (`rows` + `mapping` de contas e categorias; grava tudo numa transação), `GET /nibo-imports`, `POST /nibo-imports/:id/rollback`, `POST /nibo-imports/chart/preview` e `POST /nibo-imports/chart` (plano de contas do Nibo lido do PDF pelo frontend: `items`, `renames`, `removeUnmatched`), `POST /nibo-imports/transfers/preview` e `POST /nibo-imports/transfers` (relatório "Transferências" em Excel: `transfers`, `accountMap`; o rollback é o mesmo `/:id/rollback`) — só administrador |
 | Transferências | `POST /transactions/transfer` (`fromAccountId`, `toAccountId`, `amount`/`date` ou `transactionId` de uma linha do extrato, `counterpartId` opcional); desfazer = `POST /transactions/:id/unreconcile` de qualquer lado |
 | Plano de contas | `GET/POST /categories` (5 seções fixas da DRE; `isGroup` = subgrupo), `PATCH/DELETE /categories/:id`, `POST /categories/reorder` |
@@ -86,6 +87,10 @@ Valores monetários saem como `number` e datas em ISO 8601.
   texto (`frontend/src/lib/niboChart.ts`, pdf.js carregado só quando usado). Cria subgrupos e categorias na seção e ordem
   do Nibo, move as que já existem e (opcional) remove as sem uso fora do plano. Categorias do sistema (juros, multas,
   descontos) são reconhecidas pelo nome e nunca alteradas. Vale só para a empresa: o plano padrão não muda.
+- **Importação de PDF por IA (`services/pdfStatement.ts`):** o PDF vai direto para o Claude Haiku 5.5 (lê texto e layout,
+  inclusive PDF escaneado) com saída estruturada (JSON garantido). Fatura de cartão: o pagamento da fatura e o saldo
+  anterior ficam de fora. O frontend mostra um rascunho editável e confere com o saldo final do extrato ou o total da
+  fatura antes de gravar. Requer `ANTHROPIC_API_KEY` no ambiente (sem ela a rota responde 503 com mensagem clara).
 - **Transferências do Nibo (`services/niboTransfers.ts`):** o Excel traz cada transferência em duas linhas (saída e
   entrada); o frontend junta pela data, contas e valor. Contas casadas pelo nome com as do passo 2; transferências já
   existentes (mesma data, contas e valor) ficam de fora. Cada uma vira os dois lados conciliados (`isTransfer`).

@@ -12,6 +12,7 @@ import { SubHeader } from './components/layout/SubHeader';
 import { ResumoView } from './components/dashboard/ResumoView';
 import { AccountsAndStatements } from './components/accounts/AccountsAndStatements';
 import { ImportKind, OFXDropzoneModal } from './components/accounts/OFXDropzoneModal';
+import { PdfImportModal } from './components/accounts/PdfImportModal';
 import { NewAccountDrawer } from './components/accounts/NewAccountDrawer';
 import { PanelView } from './components/reports/PanelView';
 import { EntriesReportView } from './components/reports/EntriesReportView';
@@ -154,8 +155,11 @@ const MainLayout: React.FC = () => {
       </div>
 
       {/* Modal Global de Upload & Dropzone OFX/XLSX */}
+      {/* Extrato/fatura em PDF lido por IA */}
+      <PdfImportModal isOpen={isUploadModalOpen && uploadKind === 'PDF'} onClose={() => setIsUploadModalOpen(false)} defaultAccountId={uploadTargetAccountId} />
+
       <OFXDropzoneModal
-        isOpen={isUploadModalOpen}
+        isOpen={isUploadModalOpen && uploadKind !== 'PDF'}
         onClose={() => setIsUploadModalOpen(false)}
         defaultAccountId={uploadTargetAccountId}
         kind={uploadKind}
