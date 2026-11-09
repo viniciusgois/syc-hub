@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Download, Loader2, MinusSquare, PlusSquare, ArrowUp, ArrowDown, Info } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, MinusSquare, PlusSquare, ArrowUp, ArrowDown, Info } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useCompany } from '../../context/CompanyContext';
 import { api, errorMessage } from '../../lib/api';
@@ -7,6 +7,8 @@ import { accounting, fileSafe } from '../../lib/reports';
 import { DRESection } from '../../types';
 import { useCostCenters } from '../common/useCostCenters';
 import { PanelCell, PanelDetailsModal } from './PanelDetailsModal';
+import { ExportMenu } from './ExportMenu';
+import { PdfRow, exportTablePdf } from '../../lib/pdfExport';
 
 type Basis = 'CASH' | 'ACCRUAL';
 
@@ -165,6 +167,37 @@ export const PanelView: React.FC = () => {
     XLSX.writeFile(wb, `Painel_${fileSafe(currentCompany.tradeName)}_${year}_${cash ? 'caixa' : 'competencia'}.xlsx`);
   };
 
+  /** Mesmo conteúdo da tela (respeita "Ocultar categorias zeradas"), em PDF para o dono da empresa */
+  const exportPdf = () => {
+    const body: PdfRow[] = [];
+    const money = (values: number[]) => values.map((v) => accounting(v, 0));
+    for (const s of sections) {
+      body.push({ cells: [`${s.label.toUpperCase()} (${s.letter})`, ...money(s.totals)], style: 'section' });
+      for (const it of s.items) {
+        body.push({ cells: [it.name, ...money(it.values)], style: it.kind === 'GROUP' ? 'group' : 'normal', indent: 1 });
+        for (const c of it.children ?? []) body.push({ cells: [c.name, ...money(c.values)], indent: 2 });
+      }
+      for (const r of resultsAfter(s.section)) {
+        body.push({
+          cells: [`${r.label} (${r.formula})`, ...r.values.map((v) => (v === null ? '—' : r.kind === 'pct' ? `${accounting(v, 1)} %` : accounting(v, 0)))],
+          style: r.strong ? 'result' : 'normal',
+        });
+      }
+    }
+    return exportTablePdf({
+      fileName: `Painel_${fileSafe(currentCompany.tradeName)}_${year}_${cash ? 'caixa' : 'competencia'}.pdf`,
+      company: currentCompany,
+      title: `Painel de acompanhamento ${year}`,
+      subtitle: [cash ? 'Regime de caixa' : 'Regime de competência', costCenterName && `Centro de custo: ${costCenterName}`, hideZero && 'Categorias zeradas ocultas'].filter(Boolean).join(' · '),
+      head: ['Resultado', ...MONTHS, String(year)],
+      body,
+      rightAligned: Array.from({ length: 13 }, (_, i) => i + 1),
+      redNegatives: true,
+      widths: { 0: 170 },
+      fontSize: 7.5,
+    });
+  };
+
   const colClass = (i: number) => `px-2 text-right whitespace-nowrap ${i === currentMonth ? 'bg-blue-50/70' : ''} ${i === 12 ? 'bg-slate-100/80 font-medium' : ''}`;
   const valueClass = (v: number) => (v < -0.004 ? 'text-rose-600' : Math.abs(v) < 0.5 ? 'text-slate-400' : 'text-slate-700');
 
@@ -196,15 +229,7 @@ export const PanelView: React.FC = () => {
             <ChevronRight className="w-5 h-5" />
           </button>
         </div>
-        <button
-          type="button"
-          onClick={exportXlsx}
-          disabled={!report}
-          title="Exportar (.xlsx)"
-          className="h-9 px-3 rounded border border-slate-300 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 disabled:opacity-50"
-        >
-          <Download className="w-4 h-4" /> Exportar
-        </button>
+        <ExportMenu disabled={!report} onExcel={exportXlsx} onPdf={exportPdf} />
       </div>
 
       <div className="flex flex-wrap items-end gap-x-10 gap-y-4 mb-5">

@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import { brDate } from '../../lib/entries';
 import { ReportRow, accounting } from '../../lib/reports';
+import { exportTablePdf } from '../../lib/pdfExport';
 
 export type ColumnKey =
   | 'paidAt'
@@ -54,3 +55,17 @@ export function exportRows(fileName: string, title: string, subtitle: string, co
   XLSX.writeFile(wb, fileName);
 }
 
+
+/** Mesmo conteúdo do Excel, em PDF (cabeçalho da empresa, total e páginas numeradas) */
+export function exportRowsPdf(fileName: string, company: { legalName: string; cnpj?: string | null }, title: string, subtitle: string, columns: Column[], rows: ReportRow[]) {
+  return exportTablePdf({
+    fileName,
+    company,
+    title,
+    subtitle,
+    head: columns.map((c) => c.label),
+    body: rows.map((r) => ({ cells: columns.map((c) => cellText(r, c.key)) })),
+    foot: columns.map((c, i) => (c.key === 'value' ? accounting(rows.reduce((s, r) => s + r.value, 0)) : c.key === 'groupTotal' ? accounting(groupTotalOf(rows)) : i === 0 ? 'Total' : '')),
+    rightAligned: columns.map((c, i) => (isMoney(c.key) ? i : -1)).filter((i) => i >= 0),
+  });
+}

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, ChevronUp, Download, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import { useCompany } from '../../context/CompanyContext';
 import { api, errorMessage } from '../../lib/api';
 import { categoryChoices } from '../../lib/categories';
@@ -10,7 +10,8 @@ import { SearchSelect } from '../common/SearchSelect';
 import { useCostCenters } from '../common/useCostCenters';
 import { EntryDrawer } from '../entries/EntryDrawer';
 import { RowsTable } from './RowsTable';
-import { Column, exportRows } from './reportTable';
+import { ExportMenu } from './ExportMenu';
+import { Column, exportRows, exportRowsPdf } from './reportTable';
 
 type Regime = 'competence' | 'cash';
 
@@ -104,6 +105,15 @@ export const EntriesReportView: React.FC<{ config: EntriesReportConfig }> = ({ c
       ];
 
   const periodLabel = regime === 'competence' ? 'Período de competência' : config.cashPeriodLabel;
+  // Filtros aplicados, por extenso, para o cabeçalho do PDF
+  const activeFilters = [
+    filters.contactId && `Nome: ${contacts.find((c) => c.id === filters.contactId)?.name ?? ''}`,
+    filters.categoryId && `Categoria: ${categories.find((c) => c.id === filters.categoryId)?.name ?? ''}`,
+    filters.costCenterId && `Centro de custo: ${costCenters.find((c) => c.id === filters.costCenterId)?.name ?? ''}`,
+    filters.bankAccountId && `Conta: ${accounts.find((a) => a.id === filters.bankAccountId)?.name ?? ''}`,
+    filters.search && `Busca: "${filters.search}"`,
+    (filters.min || filters.max) && `Valor: ${filters.min || '0'} a ${filters.max || 'sem limite'}`,
+  ].filter((v): v is string => !!v);
   const apply = () => setFilters(draft);
   const set = <K extends keyof Filters>(k: K, v: Filters[K]) => setDraft((d) => ({ ...d, [k]: v }));
   const br = (v: string) => v.split('-').reverse().join('/');
@@ -113,10 +123,9 @@ export const EntriesReportView: React.FC<{ config: EntriesReportConfig }> = ({ c
       <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
         <h1 className="text-xl font-medium text-slate-700">{config.title}</h1>
         <div className="flex items-center gap-3">
-          <button
-            type="button"
+          <ExportMenu
             disabled={!rows?.length}
-            onClick={() =>
+            onExcel={() =>
               exportRows(
                 `${fileSafe(config.title)}_${fileSafe(currentCompany.tradeName)}.xlsx`,
                 config.title,
@@ -125,11 +134,21 @@ export const EntriesReportView: React.FC<{ config: EntriesReportConfig }> = ({ c
                 rows ?? [],
               )
             }
-            title="Exportar (.xlsx)"
-            className="h-9 px-3 rounded border border-slate-300 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 disabled:opacity-50"
-          >
-            <Download className="w-4 h-4" /> Exportar
-          </button>
+            onPdf={() =>
+              exportRowsPdf(
+                `${fileSafe(config.title)}_${fileSafe(currentCompany.tradeName)}.pdf`,
+                currentCompany,
+                config.title,
+                [
+                  `${periodLabel}: ${filters.from ? br(filters.from) : 'início'} a ${filters.to ? br(filters.to) : 'hoje'}`,
+                  regime === 'competence' ? 'Regime de competência' : 'Regime de caixa',
+                  ...activeFilters,
+                ].join(' · '),
+                columns,
+                rows ?? [],
+              )
+            }
+          />
           <div className="inline-flex rounded-full bg-slate-100 p-1 text-sm" role="radiogroup" aria-label="Regime">
             {(
               [
