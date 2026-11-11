@@ -133,7 +133,7 @@ const MainLayout: React.FC = () => {
       {/* 2. Área Principal de Conteúdo */}
       <div className="flex flex-col flex-1 h-screen overflow-hidden">
         {/* Header Superior com Seletor Global de Empresas */}
-        <Header onOpenUpload={() => handleOpenUpload()} />
+        <Header />
 
         {/* Sub-Header: Abas da Seção (Resumo | Contas & Extratos | Fluxo de caixa) */}
         <SubHeader />

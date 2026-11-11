@@ -9,16 +9,11 @@ import {
   Bell,
   Plus,
   Mail,
-  UploadCloud,
   Check,
 } from 'lucide-react';
 
-interface HeaderProps {
-  onOpenUpload: () => void;
-}
-
-export const Header: React.FC<HeaderProps> = ({ onOpenUpload }) => {
-  const { currentCompany, companies, setCurrentCompanyId, addCompany, notify, transactions, setActiveModule, can } = useCompany();
+export const Header: React.FC = () => {
+  const { currentCompany, companies, setCurrentCompanyId, addCompany, notify, transactions, setActiveModule } = useCompany();
   const [alerts, setAlerts] = useState<{ overdue: { count: number; receivable: number; payable: number }; unreconciledTransactions: number } | null>(null);
   const [bellOpen, setBellOpen] = useState(false);
   const bellRef = useRef<HTMLDivElement>(null);
@@ -189,21 +184,9 @@ export const Header: React.FC<HeaderProps> = ({ onOpenUpload }) => {
       </div>
 
       {/* ========================================================= */}
-      {/* LADO DIREITO: IMPORTAR OFX + NOTIFICAÇÕES (SINO NIBO)     */}
+      {/* LADO DIREITO: NOTIFICAÇÕES (SINO NIBO)                    */}
       {/* ========================================================= */}
       <div className="flex items-center space-x-4">
-        {/* Botão de Ação Rápida Importar OFX (quem pode lançar) */}
-        {can('FINANCIAL_OPERATOR') && (
-        <button
-          onClick={onOpenUpload}
-          className="flex items-center space-x-1.5 px-3 py-1.5 rounded text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-colors"
-          title="Importar Extrato Bancário OFX / Excel"
-        >
-          <UploadCloud className="w-3.5 h-3.5 text-blue-600" />
-          <span>Importar OFX</span>
-        </button>
-        )}
-
         {/* Sino: vencidos em aberto + linhas do extrato a conciliar */}
         <div className="relative" ref={bellRef}>
           <button
