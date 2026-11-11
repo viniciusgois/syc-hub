@@ -28,6 +28,7 @@ import { UsersSettings } from './components/settings/UsersSettings';
 import { NiboImportSettings } from './components/settings/NiboImportSettings';
 import { AdvancedSettings } from './components/settings/AdvancedSettings';
 import { contactSectionFor } from './lib/contacts';
+import { CompaniesView } from './components/companies/CompaniesView';
 import { EntriesView } from './components/entries/EntriesView';
 import { RecurrencesView } from './components/entries/RecurrencesView';
 import { entryRoute } from './lib/entries';
@@ -54,9 +55,13 @@ const MainLayout: React.FC = () => {
     setIsUploadModalOpen(true);
   };
 
+  const companiesPage = activeModule === 'empresas';
+
   const renderActiveModule = () => {
     if (isSettingsModule(activeModule) && !can('ADMIN')) return <NoPermission />;
     switch (activeModule) {
+      case 'empresas':
+        return <CompaniesView />;
       case 'resumo':
         return (
           <ResumoView
@@ -132,14 +137,14 @@ const MainLayout: React.FC = () => {
 
       {/* 2. Área Principal de Conteúdo */}
       <div className="flex flex-col flex-1 h-screen overflow-hidden">
-        {/* Header Superior com Seletor Global de Empresas */}
-        <Header />
+        {/* Header Superior com Seletor Global de Empresas (SYC Empresas ocupa a tela inteira) */}
+        {!companiesPage && <Header />}
 
         {/* Sub-Header: Abas da Seção (Resumo | Contas & Extratos | Fluxo de caixa) */}
-        <SubHeader />
+        {!companiesPage && <SubHeader />}
 
         {/* Papéis de leitura: o sistema mostra tudo, mas as ações de gravação são recusadas */}
-        {!can('FINANCIAL_OPERATOR') && (
+        {!companiesPage && !can('FINANCIAL_OPERATOR') && (
           <div role="status" className="px-6 py-2 bg-amber-50 border-b border-amber-200 text-xs text-amber-900 flex items-center gap-2 shrink-0">
             <Eye className="w-3.5 h-3.5 shrink-0" />
             <span>

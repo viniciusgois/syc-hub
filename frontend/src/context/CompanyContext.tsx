@@ -63,7 +63,7 @@ interface CompanyContextType {
   /** Atualiza a empresa na lista (após editar dados ou configurações) */
   updateCompany: (company: Company) => void;
   /** Remove a empresa excluída e seleciona outra */
-  removeCompany: (id: string) => void;
+  removeCompany: (id: string, opts?: { keepModule?: boolean }) => void;
   accounts: BankAccount[];
   allAccounts: BankAccount[];
   /** Contas arquivadas (inativas): só aparecem em "Ver arquivadas" */
@@ -212,16 +212,21 @@ export const CompanyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setCompanies((prev) => (prev ?? []).map((c) => (c.id === company.id ? { ...c, ...company } : c)));
   }, []);
 
-  const removeCompany = useCallback((id: string) => {
-    setCompanies((prev) => (prev ?? []).filter((c) => c.id !== id));
-    setCurrentCompanyIdState(null);
-    setActiveModule('resumo');
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch {
-      // armazenamento indisponível
-    }
-  }, []);
+  /** Tira a empresa da lista; se era a selecionada, volta para a primeira. `keepModule` mantém a tela atual (ex.: SYC Empresas) */
+  const removeCompany = useCallback(
+    (id: string, opts?: { keepModule?: boolean }) => {
+      setCompanies((prev) => (prev ?? []).filter((c) => c.id !== id));
+      if (!opts?.keepModule) setActiveModule('resumo');
+      if (currentCompanyId !== null && currentCompanyId !== id) return;
+      setCurrentCompanyIdState(null);
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch {
+        // armazenamento indisponível
+      }
+    },
+    [currentCompanyId],
+  );
 
   const companyPath = currentCompany ? `/companies/${currentCompany.id}` : '';
   const role: UserRole = currentCompany?.role ?? 'VIEWER';

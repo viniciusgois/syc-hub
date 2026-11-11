@@ -21,7 +21,7 @@ import {
   ChevronDown,
   ChevronRight,
   TrendingUp,
-  Store,
+  Building2,
   HelpCircle,
   Gift,
   CheckSquare,
@@ -131,11 +131,14 @@ export const Sidebar: React.FC = () => {
           </button>
 
           <button
-            onClick={() => alert('SYC Hub BPO Store & Integrações')}
-            className="w-10 h-10 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800/60 transition-colors"
-            title="Marketplace de Soluções"
+            onClick={() => setActiveModule('empresas')}
+            className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
+              activeModule === 'empresas' ? 'bg-blue-600/30 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+            }`}
+            title="SYC Empresas"
+            aria-label="SYC Empresas"
           >
-            <Store className="w-4 h-4" />
+            <Building2 className="w-4 h-4" />
           </button>
         </div>
 
@@ -171,7 +174,7 @@ export const Sidebar: React.FC = () => {
       {/* ========================================================= */}
       {/* 2. MENU SECUNDÁRIO BRANCO (ESTRUTURA DE MÓDULOS NIBO)     */}
       {/* ========================================================= */}
-      {isPinned && (
+      {isPinned && activeModule !== 'empresas' && (
         <aside className="w-56 bg-white border-r border-slate-200 flex flex-col h-screen text-slate-700">
           {/* Cabeçalho Empresa com Botão Pin */}
           <div className="h-14 px-4 border-b border-slate-200/80 flex items-center justify-between shrink-0">
