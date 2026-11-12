@@ -25,7 +25,7 @@ export const SubHeader: React.FC = () => {
     return (
       <div className="bg-white border-b border-slate-200 px-6 pt-3 flex items-center shrink-0 select-none overflow-x-auto">
         <div className="flex items-center space-x-6">
-          <h2 className="text-sm font-semibold text-slate-800 pb-2.5">{tabbed.title}</h2>
+          <h2 className="text-base text-slate-800 pb-2.5">{tabbed.title}</h2>
           <nav className="flex items-center space-x-6">
             {tabbed.tabs.map((t) => (
               <button
@@ -56,7 +56,7 @@ export const SubHeader: React.FC = () => {
     return (
       <div className="bg-white border-b border-slate-200 px-6 pt-3 flex items-center shrink-0 select-none">
         <div className="flex items-center space-x-6">
-          <h2 className="text-sm font-semibold text-slate-800 pb-2.5">{config.section}</h2>
+          <h2 className="text-base text-slate-800 pb-2.5">{config.section}</h2>
           <nav className="flex items-center space-x-6">
             {tabs.map((t) => (
               <button
@@ -80,7 +80,7 @@ export const SubHeader: React.FC = () => {
     return (
       <div className="bg-white border-b border-slate-200 px-6 pt-3 flex items-center shrink-0 select-none">
         <div className="flex items-center space-x-6">
-          <h2 className="text-sm font-semibold text-slate-800 pb-2.5">Contatos</h2>
+          <h2 className="text-base text-slate-800 pb-2.5">Contatos</h2>
           <nav className="flex items-center space-x-6">
             {CONTACT_SECTIONS.map((s) => (
               <button
@@ -109,7 +109,7 @@ export const SubHeader: React.FC = () => {
     <div className="bg-white border-b border-slate-200 px-6 pt-3 flex items-center justify-between shrink-0 select-none">
       {/* Lado Esquerdo: Título da Seção + Abas */}
       <div className="flex items-center space-x-6">
-        <h2 className="text-sm font-semibold text-slate-800 pb-2.5">Gestão de caixa</h2>
+        <h2 className="text-base text-slate-800 pb-2.5">Gestão de caixa</h2>
 
         <nav className="flex items-center space-x-6">
           <button

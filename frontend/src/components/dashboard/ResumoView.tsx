@@ -159,7 +159,7 @@ export const ResumoView: React.FC<ResumoViewProps> = ({ onNavigate }) => {
       {/* TÍTULO DA PÁGINA + BOTÃO IMPRIMIR                         */}
       {/* ========================================================= */}
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-lg font-bold text-slate-800 tracking-tight">Resumo</h1>
+        <h1 className="text-xl text-slate-800">Resumo</h1>
         <button
           onClick={() => window.print()}
           className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-white rounded transition-colors"
@@ -181,12 +181,12 @@ export const ResumoView: React.FC<ResumoViewProps> = ({ onNavigate }) => {
               <div className="flex items-center space-x-2">
                 <CircleDollarSign className="w-5 h-5 text-blue-600 shrink-0" />
                 <div>
-                  <h3 className="text-base font-bold text-slate-800 leading-tight">
+                  <h3 className="text-xl text-slate-800 leading-tight">
                     Saldo
                   </h3>
                   <button
                     onClick={() => setActiveModule('contas-extratos')}
-                    className="text-xs text-blue-600 hover:underline flex items-center gap-1 font-medium mt-0.5"
+                    className="text-xs text-blue-600 hover:underline flex items-center gap-1 mt-0.5"
                   >
                     <span>Gerenciar contas e extratos</span>
                     <span>→</span>
@@ -196,7 +196,7 @@ export const ResumoView: React.FC<ResumoViewProps> = ({ onNavigate }) => {
 
               {/* Total do Saldo */}
               <div className="text-right">
-                <span className="text-xl font-bold text-slate-900 tracking-tight">
+                <span className="text-2xl text-slate-900">
                   {formatNiboNumber(dynamicTotalBalance)}
                 </span>
               </div>
@@ -227,7 +227,7 @@ export const ResumoView: React.FC<ResumoViewProps> = ({ onNavigate }) => {
 
                       <div className="flex flex-col">
                         <div className="flex items-center space-x-1.5">
-                          <span className="font-medium text-slate-800 group-hover:text-blue-600 transition-colors">
+                          <span className="text-slate-800 group-hover:text-blue-600 transition-colors">
                             {acc.name}
                           </span>
                           {isItau && (
@@ -242,7 +242,7 @@ export const ResumoView: React.FC<ResumoViewProps> = ({ onNavigate }) => {
                       </div>
                     </label>
 
-                    <span className="font-semibold text-slate-800 text-xs">
+                    <span className="text-slate-800 text-xs">
                       {formatNiboNumber(acc.currentBalance)}
                     </span>
                   </div>
@@ -260,12 +260,12 @@ export const ResumoView: React.FC<ResumoViewProps> = ({ onNavigate }) => {
               <div className="flex items-center space-x-2">
                 <LineChart className="w-5 h-5 text-blue-600 shrink-0" />
                 <div>
-                  <h3 className="text-base font-bold text-slate-800 leading-tight">
+                  <h3 className="text-xl text-slate-800 leading-tight">
                     Fluxo de caixa
                   </h3>
                   <button
                     onClick={() => setActiveModule('fluxo-caixa')}
-                    className="text-xs text-blue-600 hover:underline flex items-center gap-1 font-medium mt-0.5"
+                    className="text-xs text-blue-600 hover:underline flex items-center gap-1 mt-0.5"
                   >
                     <span>Gerenciar fluxo de caixa</span>
                     <span>→</span>
@@ -274,7 +274,7 @@ export const ResumoView: React.FC<ResumoViewProps> = ({ onNavigate }) => {
               </div>
 
               {/* Seletor de Período < set/2026 - nov/2026 > */}
-              <div className="flex items-center space-x-2 text-xs font-medium text-slate-700">
+              <div className="flex items-center space-x-2 text-sm text-slate-700">
                 <button className="p-1 rounded hover:bg-slate-100 text-blue-600 transition-colors">
                   <ChevronLeft className="w-4 h-4" />
                 </button>
@@ -360,20 +360,20 @@ export const ResumoView: React.FC<ResumoViewProps> = ({ onNavigate }) => {
           {/* Título com Seta Verde */}
           <div className="flex items-center space-x-1.5 mb-3">
             <ArrowUp className="w-4 h-4 text-emerald-600 stroke-[2.5]" />
-            <h3 className="text-base font-bold text-slate-800">Recebimentos</h3>
+            <h3 className="text-lg text-slate-800">Recebimentos</h3>
           </div>
 
           {/* Faixa / Cabeçalho de Status: Próximos a receber | Em aberto | Vencido */}
-          <div className="bg-slate-100/90 rounded px-3 py-2 flex items-center justify-between text-xs text-slate-700 font-medium mb-3">
+          <div className="bg-slate-100/90 rounded px-3 py-2 flex items-center justify-between text-xs text-slate-700 mb-3">
             <span className="text-slate-600">Próximos a receber</span>
             <div className="flex items-center space-x-6">
               <div>
                 <span className="text-slate-500 mr-2">Em aberto</span>
-                <span className="font-semibold text-slate-800">{formatNiboNumber(receivableTotals.open)}</span>
+                <span className="text-slate-800">{formatNiboNumber(receivableTotals.open)}</span>
               </div>
               <div>
                 <span className="text-slate-500 mr-2">Vencido</span>
-                <span className="font-bold text-rose-600">{formatNiboNumber(receivableTotals.overdue)}</span>
+                <span className="text-rose-600">{formatNiboNumber(receivableTotals.overdue)}</span>
               </div>
             </div>
           </div>
@@ -391,14 +391,14 @@ export const ResumoView: React.FC<ResumoViewProps> = ({ onNavigate }) => {
                 <div className="flex items-center space-x-3">
                   <Star className="w-3.5 h-3.5 text-slate-300 hover:text-amber-400 cursor-pointer" />
                   <span
-                    className={`font-semibold ${
+                    className={`${
                       item.isOverdue ? 'text-rose-600' : 'text-slate-700'
                     }`}
                   >
                     {item.dueDate}
                   </span>
                   <div>
-                    <p className="font-medium text-slate-800">{item.name}</p>
+                    <p className="text-slate-800">{item.name}</p>
                     {item.subtitle && (
                       <p className="text-[11px] text-blue-600">{item.subtitle}</p>
                     )}
@@ -406,7 +406,7 @@ export const ResumoView: React.FC<ResumoViewProps> = ({ onNavigate }) => {
                 </div>
 
                 <div className="text-right">
-                  <span className="font-semibold text-slate-900">
+                  <span className="text-slate-900">
                     {formatNiboNumber(item.amount)}
                   </span>
                 </div>
@@ -420,20 +420,20 @@ export const ResumoView: React.FC<ResumoViewProps> = ({ onNavigate }) => {
           {/* Título com Seta Vermelha */}
           <div className="flex items-center space-x-1.5 mb-3">
             <ArrowDown className="w-4 h-4 text-rose-600 stroke-[2.5]" />
-            <h3 className="text-base font-bold text-slate-800">Pagamentos</h3>
+            <h3 className="text-lg text-slate-800">Pagamentos</h3>
           </div>
 
           {/* Faixa / Cabeçalho de Status: Próximos a pagar | Em aberto | Vencido */}
-          <div className="bg-slate-100/90 rounded px-3 py-2 flex items-center justify-between text-xs text-slate-700 font-medium mb-3">
+          <div className="bg-slate-100/90 rounded px-3 py-2 flex items-center justify-between text-xs text-slate-700 mb-3">
             <span className="text-slate-600">Próximos a pagar</span>
             <div className="flex items-center space-x-6">
               <div>
                 <span className="text-slate-500 mr-2">Em aberto</span>
-                <span className="font-semibold text-slate-800">{formatNiboNumber(payableTotals.open)}</span>
+                <span className="text-slate-800">{formatNiboNumber(payableTotals.open)}</span>
               </div>
               <div>
                 <span className="text-slate-500 mr-2">Vencido</span>
-                <span className="font-bold text-rose-600">{formatNiboNumber(payableTotals.overdue)}</span>
+                <span className="text-rose-600">{formatNiboNumber(payableTotals.overdue)}</span>
               </div>
             </div>
           </div>
@@ -451,14 +451,14 @@ export const ResumoView: React.FC<ResumoViewProps> = ({ onNavigate }) => {
                 <div className="flex items-center space-x-3">
                   <Star className="w-3.5 h-3.5 text-slate-300 hover:text-amber-400 cursor-pointer" />
                   <span
-                    className={`font-semibold ${
+                    className={`${
                       item.isOverdue ? 'text-rose-600' : 'text-slate-700'
                     }`}
                   >
                     {item.dueDate}
                   </span>
                   <div>
-                    <p className="font-medium text-slate-800">{item.name}</p>
+                    <p className="text-slate-800">{item.name}</p>
                     {item.subtitle && (
                       <p
                         className={`text-[11px] ${
@@ -474,7 +474,7 @@ export const ResumoView: React.FC<ResumoViewProps> = ({ onNavigate }) => {
                 </div>
 
                 <div className="text-right">
-                  <span className="font-semibold text-slate-900">
+                  <span className="text-slate-900">
                     {formatNiboNumber(item.amount)}
                   </span>
                 </div>

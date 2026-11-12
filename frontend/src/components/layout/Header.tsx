@@ -78,10 +78,10 @@ export const Header: React.FC = () => {
         >
           {currentCompany.logoUrl && <img src={currentCompany.logoUrl} alt="" className="w-9 h-9 rounded object-contain bg-white border border-slate-100" />}
           <div className="flex flex-col">
-            <span className="text-xs font-bold text-slate-800 max-w-[340px] truncate uppercase tracking-tight">
+            <span className="text-sm font-medium text-slate-800 max-w-[420px] truncate uppercase">
               {currentCompany.legalName}
             </span>
-            <span className="text-[11px] text-slate-400 font-mono tracking-tight">
+            <span className="text-xs text-slate-500">
               {formatDocument(currentCompany.cnpj)}
             </span>
           </div>

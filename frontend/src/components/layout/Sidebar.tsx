@@ -178,7 +178,7 @@ export const Sidebar: React.FC = () => {
         <aside className="w-56 bg-white border-r border-slate-200 flex flex-col h-screen text-slate-700">
           {/* Cabeçalho Empresa com Botão Pin */}
           <div className="h-14 px-4 border-b border-slate-200/80 flex items-center justify-between shrink-0">
-            <span className="text-sm font-semibold text-slate-800 tracking-tight">Empresa</span>
+            <span className="text-lg text-slate-800">Empresa</span>
             <button
               onClick={() => setIsPinned(!isPinned)}
               className="p-1 rounded text-blue-500 hover:bg-blue-50 transition-colors"
