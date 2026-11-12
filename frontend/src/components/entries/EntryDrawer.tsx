@@ -9,13 +9,13 @@ import {
   FREQUENCIES,
   brDate,
   categoryOptions,
-  contactOptions,
   frequencyLabel,
   money,
   todayIso,
 } from '../../lib/entries';
 import { MoneyInput } from '../common/MoneyInput';
 import { SearchSelect } from '../common/SearchSelect';
+import { ContactField } from './ContactField';
 import { SplitEditor } from '../common/SplitEditor';
 import { useCostCenters } from '../common/useCostCenters';
 import { SplitDraft, draftFromSplits, resolveSplit, signOf, splitError, splitPayload, startSplit } from '../../lib/splits';
@@ -162,7 +162,7 @@ export interface StatementTxPrefill {
 }
 
 export const EntryDrawer: React.FC<EntryDrawerProps> = ({ config, mode, entryId, isOpen, onClose, onChanged, defaultBankAccountId, statementTx }) => {
-  const { currentCompany, accounts, categories, contacts, notify, refreshLedger } = useCompany();
+  const { currentCompany, accounts, categories, notify, refreshLedger } = useCompany();
   const base = `/companies/${currentCompany.id}/${config.endpoint}`;
   const [form, setForm] = useState<FormState>(emptyForm);
   const [entry, setEntry] = useState<EntryDetail | null>(null);
@@ -226,7 +226,6 @@ export const EntryDrawer: React.FC<EntryDrawerProps> = ({ config, mode, entryId,
   const costCenters = useCostCenters(isOpen);
 
   const catOptions = useMemo(() => categoryOptions(categories, config.categoryType), [categories, config.categoryType]);
-  const contOptions = useMemo(() => contactOptions(contacts, config.direction), [contacts, config.direction]);
 
   if (!isOpen) return null;
 
@@ -473,15 +472,7 @@ export const EntryDrawer: React.FC<EntryDrawerProps> = ({ config, mode, entryId,
               {/* Nome / descrição / referência / categoria / valor */}
               <div className="grid grid-cols-1 md:grid-cols-12 gap-x-5 gap-y-4">
                 <Field label="Nome" htmlFor="en-contact" className="md:col-span-4">
-                  <SearchSelect
-                    id="en-contact"
-                    value={form.contactId}
-                    onChange={(v) => set('contactId', v)}
-                    options={contOptions}
-                    placeholder="Selecione um contato..."
-                    emptyText="Nenhum contato. Cadastre em Contatos."
-                    clearable
-                  />
+                  <ContactField id="en-contact" value={form.contactId} onChange={(v) => set('contactId', v)} direction={config.direction} />
                 </Field>
                 <Field label="Descrição" optional htmlFor="en-desc" className="md:col-span-5">
                   <input

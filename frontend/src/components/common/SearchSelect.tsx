@@ -21,7 +21,9 @@ export const SearchSelect: React.FC<{
   clearable?: boolean;
   emptyText?: string;
   size?: 'md' | 'sm';
-}> = ({ id, value, onChange, options, placeholder = 'Selecione...', error, clearable, emptyText = 'Nenhum resultado', size = 'md' }) => {
+  /** Mostra "-- Criar novo --" no topo da lista (e "+ Criar "texto"" ao pesquisar); recebe o texto pesquisado */
+  onCreate?: (query: string) => void;
+}> = ({ id, value, onChange, options, placeholder = 'Selecione...', error, clearable, emptyText = 'Nenhum resultado', size = 'md', onCreate }) => {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [highlight, setHighlight] = useState(0);
@@ -56,13 +58,24 @@ export const SearchSelect: React.FC<{
     setQuery('');
   };
 
+  const create = () => {
+    onCreate?.(query.trim());
+    setOpen(false);
+    setQuery('');
+  };
+
+  // Com onCreate, o índice -1 é a opção "Criar novo"
+  const minIndex = onCreate ? -1 : 0;
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       setHighlight((h) => Math.min(h + 1, filtered.length - 1));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setHighlight((h) => Math.max(h - 1, 0));
+      setHighlight((h) => Math.max(h - 1, minIndex));
+    } else if (e.key === 'Enter' && onCreate && (highlight === -1 || !filtered.length)) {
+      e.preventDefault();
+      create();
     } else if (e.key === 'Enter' && filtered[highlight]) {
       e.preventDefault();
       choose(filtered[highlight].value);
@@ -122,6 +135,16 @@ export const SearchSelect: React.FC<{
             />
           </div>
           <div className="max-h-72 overflow-y-auto" role="listbox">
+            {onCreate && (
+              <button
+                type="button"
+                onMouseEnter={() => setHighlight(-1)}
+                onClick={create}
+                className={`w-full px-4 py-2 text-left text-sm text-nibo-blue truncate ${highlight === -1 ? 'bg-nibo-blueLight' : ''}`}
+              >
+                {query.trim() ? `+ Criar "${query.trim()}"` : '-- Criar novo --'}
+              </button>
+            )}
             {!filtered.length && <p className="px-4 py-3 text-sm text-slate-500">{emptyText}</p>}
             {groups.map(([group, items]) => (
               <div key={group || '_'}>

@@ -278,7 +278,7 @@ export const CompanyProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const reloadContacts = useCallback(async () => {
     if (!companyPath) return;
     const conts = await api.get<Parameters<typeof toContact>[0][]>(`${companyPath}/contacts`);
-    setContacts(conts.map(toContact));
+    setContacts(conts.filter((c) => (c as { isActive?: boolean }).isActive !== false).map(toContact));
   }, [companyPath]);
 
   useEffect(() => {
