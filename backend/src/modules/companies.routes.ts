@@ -39,6 +39,17 @@ const companySchema = z.object({
   segment: optionalText,
   cnae: optionalDigits,
   cnaeDescription: optionalText,
+  website: optionalText,
+  // Aceita @usuario, usuario ou o link do perfil; guarda só o usuário
+  instagram: optionalText.transform((v) =>
+    v ? v.replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/^@/, '').split(/[/?#]/)[0] || null : v,
+  ),
+  googleUrl: optionalText,
+  contractStartDate: z.iso
+    .date()
+    .nullable()
+    .optional()
+    .transform((v) => (v ? new Date(`${v}T00:00:00.000Z`) : v)),
   // Logo pequena (100x100) gravada como data URL ou link externo
   logoUrl: z.string().max(400_000).refine((v) => /^(https?:|data:image\/)/.test(v), 'Logo inválida').nullable().optional(),
   status: z.enum(['ACTIVE', 'INACTIVE', 'TRIAL', 'SUSPENDED']).optional(),

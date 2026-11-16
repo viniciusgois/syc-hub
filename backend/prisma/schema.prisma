@@ -165,6 +165,10 @@ model Company {
   cnae                String? // CNAE Fiscal principal (7 dígitos)
   cnaeDescription     String?
   logoUrl             String?
+  website             String? // Site da empresa
+  instagram           String? // Perfil do Instagram (só o usuário, sem @)
+  googleUrl           String? // Link do perfil no Google (Maps / Perfil da Empresa) ou nome para busca
+  contractStartDate   DateTime? // Início do contrato com a SYC
   status              CompanyStatus @default(ACTIVE)
   // Configurações avançadas
   provisioningMonths  Int           @default(12) // Meses à frente para gerar recorrências sem fim

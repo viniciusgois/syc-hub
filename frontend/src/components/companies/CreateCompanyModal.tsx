@@ -55,7 +55,8 @@ interface CnpjLookup extends Partial<CompanyInput> {
 type FormState = Record<
   | 'cnpj' | 'legalName' | 'tradeName' | 'code' | 'cei' | 'stateReg' | 'cityReg' | 'taxRegime'
   | 'postalCode' | 'address' | 'addressNumber' | 'addressComplement' | 'state' | 'cityIbgeCode' | 'city'
-  | 'district' | 'segment' | 'cnae' | 'cnaeDescription' | 'email' | 'phone',
+  | 'district' | 'segment' | 'cnae' | 'cnaeDescription' | 'email' | 'phone'
+  | 'website' | 'instagram' | 'googleUrl' | 'contractStartDate',
   string
 >;
 
@@ -63,6 +64,7 @@ const EMPTY_FORM: FormState = {
   cnpj: '', legalName: '', tradeName: '', code: '', cei: '', stateReg: '', cityReg: '', taxRegime: '',
   postalCode: '', address: '', addressNumber: '', addressComplement: '', state: '', cityIbgeCode: '', city: '',
   district: '', segment: '', cnae: '', cnaeDescription: '', email: '', phone: '',
+  website: '', instagram: '', googleUrl: '', contractStartDate: '',
 };
 
 // ----------------------------------------------------------------------------
@@ -150,6 +152,10 @@ const formFromCompany = (c: Company): FormState => ({
   cnaeDescription: c.cnaeDescription ?? '',
   email: c.email ?? '',
   phone: c.phone ?? '',
+  website: c.website ?? '',
+  instagram: c.instagram ? `@${c.instagram}` : '',
+  googleUrl: c.googleUrl ?? '',
+  contractStartDate: c.contractStartDate?.slice(0, 10) ?? '',
 });
 
 export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ isOpen, onClose, onCreated, onOpenExisting, company }) => {
@@ -330,6 +336,16 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ isOpen, 
     segment: form.segment,
     cnae: form.cnae,
     cnaeDescription: form.cnaeDescription,
+    contractStartDate: form.contractStartDate || null,
+  });
+
+  /** Contatos e presença na internet (aba Contatos) */
+  const contactPayload = () => ({
+    email: form.email.trim() || null,
+    phone: form.phone,
+    website: form.website.trim(),
+    instagram: form.instagram.trim(),
+    googleUrl: form.googleUrl.trim(),
   });
 
   const saveDados = async () => {
@@ -397,10 +413,7 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ isOpen, 
     }
     setSaving(true);
     try {
-      const company = await api.patch<Company>(`/companies/${created.id}`, {
-        email: form.email.trim() || null,
-        phone: form.phone,
-      });
+      const company = await api.patch<Company>(`/companies/${created.id}`, contactPayload());
       onCreated(company);
       reset();
       onClose();
@@ -425,7 +438,7 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ isOpen, 
     setSaving(true);
     setBanner(null);
     try {
-      const updated = await api.patch<Company>(`/companies/${created.id}`, { ...companyPayload(), email: form.email.trim() || null, phone: form.phone });
+      const updated = await api.patch<Company>(`/companies/${created.id}`, { ...companyPayload(), ...contactPayload() });
       onCreated(updated);
       onClose();
     } catch (err) {
@@ -610,6 +623,9 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ isOpen, 
                       ))}
                     </Select>
                   </Field>
+                  <Field label="Início do contrato" optional className="md:col-span-3" htmlFor="cc-contract">
+                    <input id="cc-contract" type="date" value={form.contractStartDate} onChange={(e) => set('contractStartDate', e.target.value)} className={inputClass()} />
+                  </Field>
                 </div>
 
                 {/* Endereço */}
@@ -773,6 +789,21 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ isOpen, 
                 </Field>
                 <Field label="Telefone" optional className="md:col-span-4" htmlFor="cc-phone">
                   <input id="cc-phone" value={form.phone} onChange={(e) => set('phone', e.target.value)} inputMode="tel" className={inputClass()} />
+                </Field>
+                <Field label="Site" optional className="md:col-span-6" htmlFor="cc-site">
+                  <input id="cc-site" value={form.website} onChange={(e) => set('website', e.target.value)} placeholder="www.empresa.com.br" inputMode="url" className={inputClass()} />
+                </Field>
+                <Field label="Instagram" optional className="md:col-span-6" htmlFor="cc-instagram">
+                  <input id="cc-instagram" value={form.instagram} onChange={(e) => set('instagram', e.target.value)} placeholder="@empresa ou link do perfil" className={inputClass()} />
+                </Field>
+                <Field label="Google" optional className="md:col-span-12" htmlFor="cc-google">
+                  <input
+                    id="cc-google"
+                    value={form.googleUrl}
+                    onChange={(e) => set('googleUrl', e.target.value)}
+                    placeholder="Link do perfil no Google / Maps (ou o nome da empresa para buscar)"
+                    className={inputClass()}
+                  />
                 </Field>
               </div>
             )}

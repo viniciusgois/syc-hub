@@ -41,6 +41,13 @@ export interface Company {
   cnae?: string | null;
   cnaeDescription?: string | null;
   logoUrl?: string | null;
+  website?: string | null;
+  /** Usuário do Instagram, sem @ */
+  instagram?: string | null;
+  /** Link do perfil no Google ou nome para busca */
+  googleUrl?: string | null;
+  /** Início do contrato (aaaa-mm-dd...) */
+  contractStartDate?: string | null;
   status: 'ACTIVE' | 'INACTIVE' | 'TRIAL' | 'SUSPENDED';
   // Configurações avançadas
   provisioningMonths: number;

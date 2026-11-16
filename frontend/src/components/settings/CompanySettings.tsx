@@ -1,10 +1,11 @@
 import React, { useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { Pencil, Download, RefreshCcw, Trash2, ImagePlus, Loader2, X } from 'lucide-react';
+import { Pencil, Download, RefreshCcw, Trash2, ImagePlus, Loader2, X, Globe, AtSign, MapPin } from 'lucide-react';
 import { useCompany } from '../../context/CompanyContext';
 import { api, errorMessage } from '../../lib/api';
 import { MASKS, applyMask, formatDocument, formatPhone, onlyDigits } from '../../lib/documents';
 import { Company } from '../../types';
+import { googleHref, instagramHandle, instagramHref, siteHref, siteLabel } from '../../lib/links';
 import { CreateCompanyModal } from '../companies/CreateCompanyModal';
 import { LinkButton, Modal, PrimaryButton, fieldClass } from '../common/Modal';
 
@@ -43,6 +44,14 @@ function resizeLogo(file: File): Promise<string> {
     img.src = url;
   });
 }
+
+/** Link externo da empresa (abre em nova aba) */
+const WebLink: React.FC<{ href: string; icon: React.ReactNode; children: React.ReactNode }> = ({ href, icon, children }) => (
+  <a href={href} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-nibo-blue hover:underline break-all">
+    {icon}
+    {children}
+  </a>
+);
 
 const Info: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
   <div>
@@ -152,6 +161,28 @@ export const CompanySettings: React.FC = () => {
             <Info label="CNAE">{c.cnae ? `${applyMask(c.cnae, '9999-9/99')} ${c.cnaeDescription ?? ''}` : ''}</Info>
             <Info label="Inscrição Estadual / Municipal">{[c.stateReg, c.cityReg].filter(Boolean).join(' / ')}</Info>
             <Info label="Contato">{[c.email, c.phone ? formatPhone(c.phone) : null].filter(Boolean).join(' · ')}</Info>
+            <Info label="Início do contrato">{c.contractStartDate ? c.contractStartDate.slice(0, 10).split('-').reverse().join('/') : ''}</Info>
+            <Info label="Na internet">
+              {(c.website || c.instagram || c.googleUrl) && (
+                <div className="flex flex-col gap-1">
+                  {c.website && (
+                    <WebLink href={siteHref(c.website)} icon={<Globe className="w-4 h-4 shrink-0" />}>
+                      {siteLabel(c.website)}
+                    </WebLink>
+                  )}
+                  {c.instagram && (
+                    <WebLink href={instagramHref(c.instagram)} icon={<AtSign className="w-4 h-4 shrink-0" />}>
+                      {instagramHandle(c.instagram)}
+                    </WebLink>
+                  )}
+                  {c.googleUrl && (
+                    <WebLink href={googleHref(c.googleUrl)} icon={<MapPin className="w-4 h-4 shrink-0" />}>
+                      Perfil no Google
+                    </WebLink>
+                  )}
+                </div>
+              )}
+            </Info>
           </div>
           <div>
             <h2 className="text-base font-medium text-slate-800 mb-1">Endereço da empresa</h2>
