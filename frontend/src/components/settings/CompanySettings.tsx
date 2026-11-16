@@ -61,7 +61,8 @@ const Info: React.FC<{ label: string; children: React.ReactNode }> = ({ label, c
 );
 
 export const CompanySettings: React.FC = () => {
-  const { currentCompany: c, updateCompany, removeCompany, notify, refresh } = useCompany();
+  const { currentCompany: c, updateCompany, removeCompany, notify, refresh, contacts, reloadContacts } = useCompany();
+  const partners = contacts.filter((p) => p.type === 'PARTNER').sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
   const [editing, setEditing] = useState(false);
   const [danger, setDanger] = useState<'clear' | 'delete' | null>(null);
   const [confirm, setConfirm] = useState('');
@@ -185,6 +186,24 @@ export const CompanySettings: React.FC = () => {
             </Info>
           </div>
           <div>
+            <h2 className="text-base font-medium text-slate-800 mb-1">Sócios</h2>
+            {partners.length ? (
+              <ul className="text-sm text-slate-600 space-y-1">
+                {partners.map((p) => (
+                  <li key={p.id}>
+                    <span className="text-slate-800">{p.name}</span>
+                    {[p.qualification, p.document ? formatDocument(p.document) : null, p.birthDate ? `nasc. ${p.birthDate.slice(0, 10).split('-').reverse().join('/')}` : null, p.email]
+                      .filter(Boolean)
+                      .map((v) => ` · ${v}`)
+                      .join('')}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-slate-400">Nenhum sócio cadastrado.</p>
+            )}
+          </div>
+          <div>
             <h2 className="text-base font-medium text-slate-800 mb-1">Endereço da empresa</h2>
             {street || cityLine || c.postalCode ? (
               <address className="not-italic text-sm text-slate-600 leading-6 uppercase">
@@ -253,6 +272,7 @@ export const CompanySettings: React.FC = () => {
         onClose={() => setEditing(false)}
         onCreated={(updated) => {
           updateCompany(updated);
+          reloadContacts(); // sócios são contatos da empresa
           notify('Dados da empresa atualizados');
         }}
       />

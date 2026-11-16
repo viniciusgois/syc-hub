@@ -70,6 +70,12 @@ const contactSchema = z.object({
   country: optionalText,
   bankDetails: bankDetailsSchema,
   notes: optionalText,
+  birthDate: z.iso
+    .date()
+    .nullable()
+    .optional()
+    .transform((v) => (v ? new Date(`${v}T00:00:00.000Z`) : v)),
+  qualification: optionalText,
   isActive: z.boolean().optional(),
 });
 

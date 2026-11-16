@@ -136,6 +136,10 @@ export interface Contact {
   type: ContactType;
   personType?: PersonType;
   isActive?: boolean;
+  email?: string | null;
+  /** Sócios: data de nascimento (aaaa-mm-dd...) e qualificação */
+  birthDate?: string | null;
+  qualification?: string | null;
 }
 
 /** Contato completo (tela de Contatos) */

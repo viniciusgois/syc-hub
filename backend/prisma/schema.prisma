@@ -406,6 +406,8 @@ model Contact {
   postalCode        String?
   country           String? // País (contatos do exterior)
   bankDetails       Json? // Chave Pix, Banco, Agência, Conta
+  birthDate         DateTime? // Data de nascimento (sócios / pessoas físicas)
+  qualification     String? // Qualificação do sócio (ex.: Sócio-Administrador)
   notes             String?
   isActive          Boolean     @default(true)
   createdAt         DateTime    @default(now())

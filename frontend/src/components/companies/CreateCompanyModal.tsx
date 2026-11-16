@@ -33,20 +33,57 @@ const SEGMENTS = [
 
 const CNAE_MASK = '9999-9/99';
 
-type Tab = 'dados' | 'socios' | 'contatos' | 'grupos';
+type Tab = 'dados' | 'socios' | 'contatos';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'dados', label: 'Dados cadastrais' },
   { id: 'socios', label: 'Sócios' },
   { id: 'contatos', label: 'Contatos' },
-  { id: 'grupos', label: 'Grupos de clientes' },
 ];
 
+/** Sócio = contato do tipo PARTNER da empresa (id presente quando já está gravado) */
 interface Partner {
+  key: number;
+  id?: string;
   name: string;
+  email: string;
+  birthDate: string; // aaaa-mm-dd
   document: string;
-  role: string;
+  role: string; // qualificação
+  /** Valores gravados (para só enviar o que mudou) */
+  saved?: string;
 }
+
+/** Contato do tipo sócio como vem da API */
+interface PartnerContact {
+  id: string;
+  name: string;
+  email: string | null;
+  birthDate: string | null;
+  document: string | null;
+  qualification: string | null;
+}
+
+/** Qualificações mais comuns do quadro societário (QSA) */
+const QUALIFICATIONS = ['Sócio-Administrador', 'Sócio', 'Administrador', 'Titular Pessoa Física', 'Diretor', 'Presidente', 'Procurador', 'Sócio Comanditário'];
+
+let partnerSeq = 0;
+const partnerFields = (p: Pick<Partner, 'name' | 'email' | 'birthDate' | 'document' | 'role'>) =>
+  JSON.stringify([p.name.trim(), p.email.trim(), p.birthDate, onlyDigits(p.document), p.role.trim()]);
+const blankPartner = (): Partner => ({ key: ++partnerSeq, name: '', email: '', birthDate: '', document: '', role: '' });
+const partnerFromContact = (c: PartnerContact): Partner => {
+  const d = onlyDigits(c.document ?? '');
+  const p = {
+    key: ++partnerSeq,
+    id: c.id,
+    name: c.name,
+    email: c.email ?? '',
+    birthDate: c.birthDate?.slice(0, 10) ?? '',
+    document: d ? applyMask(d, d.length > 11 ? MASKS.cnpj : MASKS.cpf) : '',
+    role: c.qualification ?? '',
+  };
+  return { ...p, saved: partnerFields(p) };
+};
 
 interface CnpjLookup extends Partial<CompanyInput> {
   partners: { name: string; role: string | null }[];
@@ -166,6 +203,8 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ isOpen, 
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
   const [banner, setBanner] = useState<{ kind: 'error' | 'info'; message: string } | null>(null);
   const [partners, setPartners] = useState<Partner[]>([]);
+  const [removedPartnerIds, setRemovedPartnerIds] = useState<string[]>([]);
+  const [partnerErrors, setPartnerErrors] = useState<Record<number, string>>({});
   const [created, setCreated] = useState<Company | null>(null);
   const [saving, setSaving] = useState(false);
   const [existingId, setExistingId] = useState<string | null>(null);
@@ -202,6 +241,18 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ isOpen, 
     setErrors({});
     setBanner(null);
     setCreated(company);
+    setPartners([]);
+    setRemovedPartnerIds([]);
+    setPartnerErrors({});
+    let cancelled = false;
+    api
+      .get<PartnerContact[]>(`/companies/${company.id}/contacts?type=PARTNER`)
+      // Mantém linhas novas que o usuário já tenha começado a preencher enquanto a lista carregava
+      .then((list) => !cancelled && setPartners((current) => [...list.map(partnerFromContact), ...current.filter((x) => !x.id)]))
+      .catch(() => !cancelled && setPartners([]));
+    return () => {
+      cancelled = true;
+    };
   }, [isOpen, company]);
 
   // Ao carregar a lista, casa o município vindo do CNPJ/CEP (pelo código IBGE)
@@ -240,6 +291,8 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ isOpen, 
     setErrors({});
     setBanner(null);
     setPartners([]);
+    setRemovedPartnerIds([]);
+    setPartnerErrors({});
     setCreated(null);
     setExistingId(null);
   };
@@ -274,7 +327,13 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ isOpen, 
         phone: data.phone ?? undefined,
       });
       if (data.partners.length) {
-        setPartners(data.partners.map((p) => ({ name: p.name, document: '', role: p.role ?? '' })));
+        // Só acrescenta os sócios da Receita que ainda não estão na lista
+        setPartners((current) => [
+          ...current,
+          ...data.partners
+            .filter((p) => !current.some((c) => c.name.trim().toUpperCase() === p.name.trim().toUpperCase()))
+            .map((p) => ({ ...blankPartner(), name: p.name, role: p.role ?? '' })),
+        ]);
       }
       setBanner({ kind: 'info', message: 'Dados preenchidos a partir da Receita Federal. Confira antes de salvar.' });
     } catch (err) {
@@ -376,23 +435,55 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ isOpen, 
   // Etapa 2: sócios -> contatos do tipo PARTNER da nova empresa
   // --------------------------------------------------------------------------
 
+  /** Linhas preenchidas: nome obrigatório, e-mail e CPF/CNPJ válidos quando informados */
+  const validatePartners = () => {
+    const errs: Record<number, string> = {};
+    for (const p of partners) {
+      const filled = [p.name, p.email, p.birthDate, p.document, p.role].some((v) => v.trim());
+      // Só confere linhas novas ou alteradas (cadastros antigos com dado inválido não travam o salvar)
+      if (!filled || (p.id && partnerFields(p) === p.saved)) continue;
+      const doc = onlyDigits(p.document);
+      if (!p.name.trim()) errs[p.key] = 'Informe o nome do sócio';
+      else if (p.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p.email.trim())) errs[p.key] = 'E-mail inválido';
+      else if (doc && !(doc.length === 11 ? isValidCPF(doc) : doc.length === 14 ? isValidCNPJ(doc) : false)) errs[p.key] = 'CPF/CNPJ inválido';
+    }
+    setPartnerErrors(errs);
+    if (Object.keys(errs).length) setTab('socios');
+    return !Object.keys(errs).length;
+  };
+
+  /** Grava os sócios (novos, alterados e removidos) e recarrega a lista com os ids */
+  const persistPartners = async (companyId: string) => {
+    const base = `/companies/${companyId}/contacts`;
+    for (const id of removedPartnerIds) await api.delete(`${base}/${id}`);
+    for (const p of partners) {
+      if (!p.name.trim()) continue;
+      const fields = partnerFields(p);
+      if (p.id && fields === p.saved) continue;
+      const doc = onlyDigits(p.document);
+      const payload = {
+        name: p.name.trim(),
+        // Sócio pode ser pessoa física (CPF) ou jurídica (CNPJ)
+        personType: doc.length > 11 ? 'LEGAL' : 'NATURAL',
+        document: doc || null,
+        email: p.email.trim() || null,
+        birthDate: p.birthDate || null,
+        qualification: p.role.trim() || null,
+      };
+      if (p.id) await api.patch(`${base}/${p.id}`, payload);
+      else await api.post(base, { type: 'PARTNER', ...payload });
+    }
+    setRemovedPartnerIds([]);
+    const list = await api.get<PartnerContact[]>(`${base}?type=PARTNER`);
+    setPartners(list.map(partnerFromContact));
+  };
+
   const savePartners = async () => {
-    if (!created) return;
-    const valid = partners.filter((p) => p.name.trim());
+    if (!created || !validatePartners()) return;
     setSaving(true);
     setBanner(null);
     try {
-      for (const p of valid) {
-        await api.post(`/companies/${created.id}/contacts`, {
-          type: 'PARTNER',
-          name: p.name.trim(),
-          // Sócio pode ser pessoa física (CPF) ou jurídica (CNPJ)
-          personType: onlyDigits(p.document).length > 11 ? 'LEGAL' : 'NATURAL',
-          ...(p.document && { document: p.document }),
-          ...(p.role && { notes: p.role }),
-        });
-      }
-      setPartners([]); // já gravados: evita duplicar se voltar para a aba
+      await persistPartners(created.id);
       setTab('contatos');
     } catch (err) {
       setBanner({ kind: 'error', message: errorMessage(err) });
@@ -435,10 +526,12 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ isOpen, 
       setTab('contatos');
       return;
     }
+    if (!validatePartners()) return;
     setSaving(true);
     setBanner(null);
     try {
       const updated = await api.patch<Company>(`/companies/${created.id}`, { ...companyPayload(), ...contactPayload() });
+      await persistPartners(created.id);
       onCreated(updated);
       onClose();
     } catch (err) {
@@ -448,7 +541,7 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ isOpen, 
     }
   };
 
-  const primaryAction = editMode ? saveEdit : { dados: saveDados, socios: savePartners, contatos: saveContatos, grupos: saveContatos }[tab];
+  const primaryAction = editMode ? saveEdit : { dados: saveDados, socios: savePartners, contatos: saveContatos }[tab];
   const primaryLabel = editMode ? 'Salvar' : tab === 'contatos' ? 'Concluir' : 'Salvar e continuar';
 
   // --------------------------------------------------------------------------
@@ -476,8 +569,8 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ isOpen, 
         {/* Abas + conteúdo */}
         <div className="flex-1 min-h-0 bg-slate-100 px-5 pt-5 flex flex-col">
           <div className="flex flex-wrap" role="tablist">
-            {TABS.filter((t) => !editMode || t.id === 'dados' || t.id === 'contatos').map((t) => {
-              const enabled = t.id === 'dados' || (!!created && t.id !== 'grupos');
+            {TABS.map((t) => {
+              const enabled = t.id === 'dados' || !!created;
               const active = tab === t.id;
               return (
                 <button
@@ -485,7 +578,7 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ isOpen, 
                   role="tab"
                   aria-selected={active}
                   disabled={!enabled}
-                  title={t.id === 'grupos' ? 'Em breve' : !enabled ? 'Salve os dados cadastrais primeiro' : undefined}
+                  title={!enabled ? 'Salve os dados cadastrais primeiro' : undefined}
                   onClick={() => setTab(t.id)}
                   className={`px-7 py-3 text-base rounded-t-md transition-colors ${
                     active
@@ -735,51 +828,72 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ isOpen, 
                 <p className="text-sm text-slate-500">
                   Os sócios ficam cadastrados como contatos da empresa e podem ser usados em pró-labore e distribuição de lucros.
                 </p>
-                {partners.length === 0 && <p className="text-sm text-slate-400">Nenhum sócio adicionado.</p>}
-                {partners.map((p, i) => (
-                  <div key={i} className="grid grid-cols-1 md:grid-cols-12 gap-x-5 gap-y-3 items-end">
-                    <Field label="Nome" className="md:col-span-5" htmlFor={`p-name-${i}`}>
-                      <input
-                        id={`p-name-${i}`}
-                        value={p.name}
-                        onChange={(e) => setPartners((ps) => ps.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}
-                        className={inputClass()}
-                      />
-                    </Field>
-                    <Field label="CPF / CNPJ" optional className="md:col-span-3" htmlFor={`p-doc-${i}`}>
-                      <input
-                        id={`p-doc-${i}`}
-                        value={p.document}
-                        onChange={(e) => {
-                          const d = onlyDigits(e.target.value);
-                          const value = applyMask(d, d.length > 11 ? MASKS.cnpj : MASKS.cpf);
-                          setPartners((ps) => ps.map((x, j) => (j === i ? { ...x, document: value } : x)));
-                        }}
-                        inputMode="numeric"
-                        className={`${inputClass()} font-mono`}
-                      />
-                    </Field>
-                    <Field label="Qualificação" optional className="md:col-span-3" htmlFor={`p-role-${i}`}>
-                      <input
-                        id={`p-role-${i}`}
-                        value={p.role}
-                        onChange={(e) => setPartners((ps) => ps.map((x, j) => (j === i ? { ...x, role: e.target.value } : x)))}
-                        className={inputClass()}
-                      />
-                    </Field>
-                    <button
-                      type="button"
-                      onClick={() => setPartners((ps) => ps.filter((_, j) => j !== i))}
-                      aria-label="Remover sócio"
-                      className="md:col-span-1 h-11 flex items-center justify-center rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
+                {partners.length === 0 && <p className="text-sm text-slate-400">Nenhum sócio cadastrado.</p>}
+                <datalist id="partner-qualifications">
+                  {QUALIFICATIONS.map((q) => (
+                    <option key={q} value={q} />
+                  ))}
+                </datalist>
+                {partners.map((p) => {
+                  const update = (patch: Partial<Partner>) => {
+                    setPartners((ps) => ps.map((x) => (x.key === p.key ? { ...x, ...patch } : x)));
+                    if (partnerErrors[p.key]) setPartnerErrors((e) => ({ ...e, [p.key]: '' }));
+                  };
+                  return (
+                    <div key={p.key} className="rounded-md border border-slate-200 p-4 space-y-3">
+                      <div className="grid grid-cols-1 md:grid-cols-12 gap-x-5 gap-y-3 items-end">
+                        <Field label="Nome" className="md:col-span-5" htmlFor={`p-name-${p.key}`}>
+                          <input id={`p-name-${p.key}`} value={p.name} onChange={(e) => update({ name: e.target.value })} className={inputClass()} />
+                        </Field>
+                        <Field label="CPF / CNPJ" optional className="md:col-span-3" htmlFor={`p-doc-${p.key}`}>
+                          <input
+                            id={`p-doc-${p.key}`}
+                            value={p.document}
+                            onChange={(e) => {
+                              const d = onlyDigits(e.target.value);
+                              update({ document: applyMask(d, d.length > 11 ? MASKS.cnpj : MASKS.cpf) });
+                            }}
+                            inputMode="numeric"
+                            className={`${inputClass()} font-mono`}
+                          />
+                        </Field>
+                        <Field label="Data de nascimento" optional className="md:col-span-3" htmlFor={`p-birth-${p.key}`}>
+                          <input id={`p-birth-${p.key}`} type="date" value={p.birthDate} onChange={(e) => update({ birthDate: e.target.value })} className={inputClass()} />
+                        </Field>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (p.id) setRemovedPartnerIds((ids) => [...ids, p.id!]);
+                            setPartners((ps) => ps.filter((x) => x.key !== p.key));
+                          }}
+                          aria-label={`Remover sócio ${p.name}`.trim()}
+                          className="md:col-span-1 h-11 flex items-center justify-center rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-12 gap-x-5 gap-y-3">
+                        <Field label="E-mail" optional className="md:col-span-5" htmlFor={`p-email-${p.key}`}>
+                          <input id={`p-email-${p.key}`} type="email" value={p.email} onChange={(e) => update({ email: e.target.value })} className={inputClass()} />
+                        </Field>
+                        <Field label="Qualificação" optional className="md:col-span-6" htmlFor={`p-role-${p.key}`}>
+                          <input
+                            id={`p-role-${p.key}`}
+                            list="partner-qualifications"
+                            value={p.role}
+                            onChange={(e) => update({ role: e.target.value })}
+                            placeholder="Ex.: Sócio-Administrador"
+                            className={inputClass()}
+                          />
+                        </Field>
+                      </div>
+                      {partnerErrors[p.key] && <p className="text-xs text-rose-600">{partnerErrors[p.key]}</p>}
+                    </div>
+                  );
+                })}
                 <button
                   type="button"
-                  onClick={() => setPartners((ps) => [...ps, { name: '', document: '', role: '' }])}
+                  onClick={() => setPartners((ps) => [...ps, blankPartner()])}
                   className="flex items-center gap-1.5 text-sm font-medium text-nibo-blue hover:underline"
                 >
                   <Plus className="w-4 h-4" /> Adicionar sócio
@@ -817,7 +931,7 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ isOpen, 
 
         {/* Rodapé */}
         <div className="px-7 py-4 flex items-center justify-end gap-6 border-t border-slate-200 bg-white">
-          {tab === 'socios' && (
+          {tab === 'socios' && !editMode && (
             <button type="button" onClick={() => setTab('contatos')} className="text-base text-nibo-blue hover:underline">
               Pular
             </button>
