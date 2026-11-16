@@ -623,6 +623,11 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ isOpen, 
                       ))}
                     </Select>
                   </Field>
+                  {isPJ && (
+                    <Field label="Nome fantasia" optional className="md:col-span-6" htmlFor="cc-trade">
+                      <input id="cc-trade" value={form.tradeName} onChange={(e) => set('tradeName', e.target.value)} className={inputClass()} />
+                    </Field>
+                  )}
                   <Field label="Início do contrato" optional className="md:col-span-3" htmlFor="cc-contract">
                     <input id="cc-contract" type="date" value={form.contractStartDate} onChange={(e) => set('contractStartDate', e.target.value)} className={inputClass()} />
                   </Field>
