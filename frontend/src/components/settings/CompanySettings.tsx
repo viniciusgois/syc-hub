@@ -192,7 +192,7 @@ export const CompanySettings: React.FC = () => {
                 {partners.map((p) => (
                   <li key={p.id}>
                     <span className="text-slate-800">{p.name}</span>
-                    {[p.qualification, p.document ? formatDocument(p.document) : null, p.birthDate ? `nasc. ${p.birthDate.slice(0, 10).split('-').reverse().join('/')}` : null, p.email]
+                    {[p.qualification, p.document ? formatDocument(p.document) : null, p.birthDate ? `nasc. ${p.birthDate.slice(0, 10).split('-').reverse().join('/')}` : null, p.email, p.phone ? formatPhone(p.phone) : null]
                       .filter(Boolean)
                       .map((v) => ` · ${v}`)
                       .join('')}

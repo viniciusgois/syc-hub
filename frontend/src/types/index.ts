@@ -137,6 +137,7 @@ export interface Contact {
   personType?: PersonType;
   isActive?: boolean;
   email?: string | null;
+  phone?: string | null;
   /** Sócios: data de nascimento (aaaa-mm-dd...) e qualificação */
   birthDate?: string | null;
   qualification?: string | null;

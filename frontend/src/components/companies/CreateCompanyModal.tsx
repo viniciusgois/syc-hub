@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { X, Search, Loader2, Plus, Trash2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { ApiError, api, errorMessage } from '../../lib/api';
-import { MASKS, applyMask, formatDocument, isValidCNPJ, isValidCPF, onlyDigits } from '../../lib/documents';
+import { MASKS, applyMask, formatDocument, formatPhone, isValidCNPJ, isValidCPF, onlyDigits } from '../../lib/documents';
 import { Company, CompanyInput, PersonType, TaxRegime } from '../../types';
 
 // ----------------------------------------------------------------------------
@@ -47,6 +47,7 @@ interface Partner {
   id?: string;
   name: string;
   email: string;
+  phone: string;
   birthDate: string; // aaaa-mm-dd
   document: string;
   role: string; // qualificação
@@ -59,6 +60,7 @@ interface PartnerContact {
   id: string;
   name: string;
   email: string | null;
+  phone: string | null;
   birthDate: string | null;
   document: string | null;
   qualification: string | null;
@@ -68,9 +70,9 @@ interface PartnerContact {
 const QUALIFICATIONS = ['Sócio-Administrador', 'Sócio', 'Administrador', 'Titular Pessoa Física', 'Diretor', 'Presidente', 'Procurador', 'Sócio Comanditário'];
 
 let partnerSeq = 0;
-const partnerFields = (p: Pick<Partner, 'name' | 'email' | 'birthDate' | 'document' | 'role'>) =>
-  JSON.stringify([p.name.trim(), p.email.trim(), p.birthDate, onlyDigits(p.document), p.role.trim()]);
-const blankPartner = (): Partner => ({ key: ++partnerSeq, name: '', email: '', birthDate: '', document: '', role: '' });
+const partnerFields = (p: Pick<Partner, 'name' | 'email' | 'phone' | 'birthDate' | 'document' | 'role'>) =>
+  JSON.stringify([p.name.trim(), p.email.trim(), onlyDigits(p.phone), p.birthDate, onlyDigits(p.document), p.role.trim()]);
+const blankPartner = (): Partner => ({ key: ++partnerSeq, name: '', email: '', phone: '', birthDate: '', document: '', role: '' });
 const partnerFromContact = (c: PartnerContact): Partner => {
   const d = onlyDigits(c.document ?? '');
   const p = {
@@ -78,6 +80,7 @@ const partnerFromContact = (c: PartnerContact): Partner => {
     id: c.id,
     name: c.name,
     email: c.email ?? '',
+    phone: c.phone ? formatPhone(c.phone) : '',
     birthDate: c.birthDate?.slice(0, 10) ?? '',
     document: d ? applyMask(d, d.length > 11 ? MASKS.cnpj : MASKS.cpf) : '',
     role: c.qualification ?? '',
@@ -439,7 +442,7 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ isOpen, 
   const validatePartners = () => {
     const errs: Record<number, string> = {};
     for (const p of partners) {
-      const filled = [p.name, p.email, p.birthDate, p.document, p.role].some((v) => v.trim());
+      const filled = [p.name, p.email, p.phone, p.birthDate, p.document, p.role].some((v) => v.trim());
       // Só confere linhas novas ou alteradas (cadastros antigos com dado inválido não travam o salvar)
       if (!filled || (p.id && partnerFields(p) === p.saved)) continue;
       const doc = onlyDigits(p.document);
@@ -467,6 +470,7 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ isOpen, 
         personType: doc.length > 11 ? 'LEGAL' : 'NATURAL',
         document: doc || null,
         email: p.email.trim() || null,
+        phone: onlyDigits(p.phone) || null,
         birthDate: p.birthDate || null,
         qualification: p.role.trim() || null,
       };
@@ -873,10 +877,20 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ isOpen, 
                         </button>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-12 gap-x-5 gap-y-3">
-                        <Field label="E-mail" optional className="md:col-span-5" htmlFor={`p-email-${p.key}`}>
+                        <Field label="E-mail" optional className="md:col-span-4" htmlFor={`p-email-${p.key}`}>
                           <input id={`p-email-${p.key}`} type="email" value={p.email} onChange={(e) => update({ email: e.target.value })} className={inputClass()} />
                         </Field>
-                        <Field label="Qualificação" optional className="md:col-span-6" htmlFor={`p-role-${p.key}`}>
+                        <Field label="Telefone" optional className="md:col-span-3" htmlFor={`p-phone-${p.key}`}>
+                          <input
+                            id={`p-phone-${p.key}`}
+                            value={p.phone}
+                            onChange={(e) => update({ phone: formatPhone(e.target.value) })}
+                            inputMode="tel"
+                            placeholder="(00) 00000-0000"
+                            className={inputClass()}
+                          />
+                        </Field>
+                        <Field label="Qualificação" optional className="md:col-span-4" htmlFor={`p-role-${p.key}`}>
                           <input
                             id={`p-role-${p.key}`}
                             list="partner-qualifications"
