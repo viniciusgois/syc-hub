@@ -60,6 +60,8 @@ interface CompanyContextType {
   companies: Company[];
   setCurrentCompanyId: (id: string) => void;
   addCompany: (company: Company) => void;
+  /** Recarrega a lista de empresas do usuário (ex.: empresa criada em outra aba) */
+  reloadCompanies: () => Promise<void>;
   /** Atualiza a empresa na lista (após editar dados ou configurações) */
   updateCompany: (company: Company) => void;
   /** Remove a empresa excluída e seleciona outra */
@@ -490,6 +492,7 @@ export const CompanyProvider: React.FC<{ children: React.ReactNode }> = ({ child
         contacts,
         reloadContacts,
         reloadCategories,
+        reloadCompanies: loadCompanies,
         transactions,
         isLoading,
         activeModule,

@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 
 export const Header: React.FC = () => {
-  const { currentCompany, companies, setCurrentCompanyId, addCompany, notify, transactions, setActiveModule } = useCompany();
+  const { currentCompany, companies, setCurrentCompanyId, addCompany, reloadCompanies, notify, transactions, setActiveModule } = useCompany();
   const [alerts, setAlerts] = useState<{ overdue: { count: number; receivable: number; payable: number }; unreconciledTransactions: number } | null>(null);
   const [bellOpen, setBellOpen] = useState(false);
   const bellRef = useRef<HTMLDivElement>(null);
@@ -252,6 +252,12 @@ export const Header: React.FC = () => {
       <CreateCompanyModal
         isOpen={createOpen}
         onClose={() => setCreateOpen(false)}
+        onOpenExisting={async (id) => {
+          setCreateOpen(false);
+          await reloadCompanies();
+          setCurrentCompanyId(id);
+          setActiveModule('resumo');
+        }}
         onCreated={(company) => {
           addCompany(company);
           notify(`Empresa ${company.legalName} criada`);

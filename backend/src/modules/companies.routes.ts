@@ -85,6 +85,18 @@ companiesRouter.post('/', async (req, res) => {
   assertDocument(data.personType, data.cnpj);
   const userId = res.locals.userId as string;
 
+  // Documento já cadastrado: diz se o usuário já tem acesso (aí o front abre a empresa) ou se é de outra equipe
+  const existing = await prisma.company.findUnique({
+    where: { cnpj: data.cnpj },
+    select: { id: true, legalName: true, users: { where: { userId }, select: { role: true } } },
+  });
+  if (existing) {
+    const doc = data.personType === 'NATURAL' ? 'CPF' : 'CNPJ';
+    throw existing.users.length
+      ? new HttpError(409, `${doc} já cadastrado: ${existing.legalName} já está na sua lista de empresas.`, { companyId: existing.id, fields: ['cnpj'] })
+      : new HttpError(409, `${doc} já cadastrado no SYC Hub por outro usuário. Peça ao responsável pela empresa para convidar você.`, { fields: ['cnpj'] });
+  }
+
   const company = await prisma.$transaction(async (db) => {
     const created = await db.company.create({ data: { ...data, tradeName: tradeName ?? data.legalName } });
     await db.category.createMany({ data: defaultCategoriesFor(created.id) });

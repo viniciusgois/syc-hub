@@ -11,7 +11,7 @@ const isAdmin = (c: Company) => c.role === 'ADMIN' || c.role === 'OWNER';
 
 /** SYC Empresas: todas as empresas que o usuário acessa, em cards (como o "Nibo Empresa") */
 export const CompaniesView: React.FC = () => {
-  const { companies, currentCompany, setCurrentCompanyId, setActiveModule, addCompany, removeCompany, notify } = useCompany();
+  const { companies, currentCompany, setCurrentCompanyId, setActiveModule, addCompany, removeCompany, reloadCompanies, notify } = useCompany();
   const [search, setSearch] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [menuFor, setMenuFor] = useState<string | null>(null);
@@ -158,6 +158,12 @@ export const CompaniesView: React.FC = () => {
       <CreateCompanyModal
         isOpen={createOpen}
         onClose={() => setCreateOpen(false)}
+        onOpenExisting={async (id) => {
+          setCreateOpen(false);
+          await reloadCompanies();
+          setCurrentCompanyId(id);
+          setActiveModule('resumo');
+        }}
         onCreated={(company) => {
           addCompany(company);
           notify(`Empresa ${company.legalName} criada`);

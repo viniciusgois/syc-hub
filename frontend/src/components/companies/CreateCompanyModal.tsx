@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { X, Search, Loader2, Plus, Trash2, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { api, errorMessage } from '../../lib/api';
+import { ApiError, api, errorMessage } from '../../lib/api';
 import { MASKS, applyMask, formatDocument, isValidCNPJ, isValidCPF, onlyDigits } from '../../lib/documents';
 import { Company, CompanyInput, PersonType, TaxRegime } from '../../types';
 
@@ -82,14 +82,17 @@ const Field: React.FC<{
   error?: string;
   className?: string;
   htmlFor?: string;
+  /** Conteúdo abaixo da mensagem de erro (ex.: atalho para resolver) */
+  footer?: React.ReactNode;
   children: React.ReactNode;
-}> = ({ label, optional, error, className = '', htmlFor, children }) => (
+}> = ({ label, optional, error, className = '', htmlFor, footer, children }) => (
   <div className={`flex flex-col gap-1.5 min-w-0 ${className}`}>
     <label htmlFor={htmlFor} className="text-sm font-medium text-slate-800">
       {label} {optional && <span className="italic font-normal text-slate-400">(opcional)</span>}
     </label>
     {children}
     {error && <span className="text-xs text-rose-600">{error}</span>}
+    {footer}
   </div>
 );
 
@@ -118,6 +121,8 @@ interface CreateCompanyModalProps {
   onClose: () => void;
   /** Chamado ao concluir (ou fechar) depois que a empresa já foi criada — ou ao salvar a edição */
   onCreated: (company: Company) => void;
+  /** CNPJ já cadastrado e o usuário tem acesso: abre essa empresa */
+  onOpenExisting?: (companyId: string) => void;
   /** Empresa existente: abre em modo edição (dados cadastrais e contatos) */
   company?: Company | null;
 }
@@ -147,7 +152,7 @@ const formFromCompany = (c: Company): FormState => ({
   phone: c.phone ?? '',
 });
 
-export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ isOpen, onClose, onCreated, company }) => {
+export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ isOpen, onClose, onCreated, onOpenExisting, company }) => {
   const editMode = !!company;
   const [tab, setTab] = useState<Tab>('dados');
   const [personType, setPersonType] = useState<PersonType>('LEGAL');
@@ -157,6 +162,7 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ isOpen, 
   const [partners, setPartners] = useState<Partner[]>([]);
   const [created, setCreated] = useState<Company | null>(null);
   const [saving, setSaving] = useState(false);
+  const [existingId, setExistingId] = useState<string | null>(null);
   const [lookingUp, setLookingUp] = useState<'cnpj' | 'cep' | null>(null);
   const [municipios, setMunicipios] = useState<{ id: string; name: string }[]>([]);
   const [loadingMunicipios, setLoadingMunicipios] = useState(false);
@@ -229,9 +235,12 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ isOpen, 
     setBanner(null);
     setPartners([]);
     setCreated(null);
+    setExistingId(null);
   };
 
   const close = () => {
+    // Enquanto grava, não fecha: a resposta chegaria com a janela fechada e a empresa criada sumiria da lista
+    if (saving) return;
     // Na criação, a empresa já existe após a 1ª etapa: fechar também a seleciona. Na edição, fechar descarta.
     if (created && !editMode) onCreated(created);
     reset();
@@ -327,6 +336,7 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ isOpen, 
     if (!validateDados()) return;
     setSaving(true);
     setBanner(null);
+    setExistingId(null);
     try {
       const company = created
         ? await api.patch<Company>(`/companies/${created.id}`, companyPayload())
@@ -335,7 +345,11 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ isOpen, 
       setTab('socios');
     } catch (err) {
       const message = errorMessage(err);
-      if (/duplicado/i.test(message)) setErrors((e) => ({ ...e, cnpj: `${isPJ ? 'CNPJ' : 'CPF'} já cadastrado` }));
+      const details = err instanceof ApiError ? (err.details as { companyId?: string } | undefined) : undefined;
+      if (err instanceof ApiError && err.status === 409 && !/duplicado/i.test(message)) {
+        setErrors((e) => ({ ...e, cnpj: message }));
+        setExistingId(details?.companyId ?? null);
+      } else if (/duplicado/i.test(message)) setErrors((e) => ({ ...e, cnpj: `${isPJ ? 'CNPJ' : 'CPF'} já cadastrado` }));
       else setBanner({ kind: 'error', message });
     } finally {
       setSaving(false);
@@ -438,6 +452,7 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ isOpen, 
           </h2>
           <button
             onClick={close}
+            disabled={saving}
             aria-label="Fechar"
             className="w-14 h-14 flex items-center justify-center rounded-lg border-2 border-nibo-blue/70 text-slate-500 hover:bg-slate-50"
           >
@@ -513,7 +528,27 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ isOpen, 
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-x-7 gap-y-5">
-                  <Field label={isPJ ? 'CNPJ' : 'CPF'} error={errors.cnpj} className="md:col-span-3" htmlFor="cc-doc">
+                  <Field
+                    label={isPJ ? 'CNPJ' : 'CPF'}
+                    error={errors.cnpj}
+                    className="md:col-span-3"
+                    htmlFor="cc-doc"
+                    footer={
+                      existingId && onOpenExisting && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const id = existingId;
+                            reset();
+                            onOpenExisting(id);
+                          }}
+                          className="self-start text-sm text-nibo-blue hover:underline"
+                        >
+                          Abrir esta empresa
+                        </button>
+                      )
+                    }
+                  >
                     <div className="relative">
                       <input
                         id="cc-doc"
@@ -751,7 +786,7 @@ export const CreateCompanyModal: React.FC<CreateCompanyModalProps> = ({ isOpen, 
               Pular
             </button>
           )}
-          <button type="button" onClick={close} className="text-base text-nibo-blue hover:underline">
+          <button type="button" onClick={close} disabled={saving} className="text-base text-nibo-blue hover:underline disabled:opacity-50">
             {created && !editMode ? 'Fechar' : 'Cancelar'}
           </button>
           <button
