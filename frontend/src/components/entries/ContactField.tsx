@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Loader2, X } from 'lucide-react';
 import { useCompany } from '../../context/CompanyContext';
 import { api, errorMessage } from '../../lib/api';
@@ -31,7 +31,11 @@ export const ContactField: React.FC<{
   onChange: (contactId: string) => void;
   direction: EntryDirection;
   error?: string;
-}> = ({ id, value, onChange, direction, error }) => {
+  size?: 'md' | 'sm';
+  placeholder?: string;
+}> = ({ id, value, onChange, direction, error, size, placeholder = 'Selecione um contato...' }) => {
+  const autoId = useId();
+  const baseId = id ?? `contact-${autoId.replace(/:/g, '')}`;
   const { currentCompany, contacts, reloadContacts, notify, can } = useCompany();
   const types = QUICK_TYPES[direction];
   const options = useMemo(() => contactOptions(contacts, direction), [contacts, direction]);
@@ -98,7 +102,8 @@ export const ContactField: React.FC<{
         value={value}
         onChange={onChange}
         options={options}
-        placeholder="Selecione um contato..."
+        placeholder={placeholder}
+        size={size}
         emptyText="Nenhum contato encontrado"
         error={error}
         clearable
@@ -120,11 +125,11 @@ export const ContactField: React.FC<{
           </div>
           <div className="px-3 py-3 space-y-3">
             <div>
-              <label htmlFor={`${id ?? 'contact'}-new-type`} className="block text-sm text-slate-800 mb-1">
+              <label htmlFor={`${baseId}-new-type`} className="block text-sm text-slate-800 mb-1">
                 Tipo de contato
               </label>
               <select
-                id={`${id ?? 'contact'}-new-type`}
+                id={`${baseId}-new-type`}
                 value={type}
                 onChange={(e) => setType(e.target.value as ContactType)}
                 className="w-full h-9 px-2 rounded border border-slate-300 text-sm bg-white focus:outline-none focus:border-nibo-blue focus:ring-2 focus:ring-nibo-blueLight"
@@ -137,12 +142,12 @@ export const ContactField: React.FC<{
               </select>
             </div>
             <div>
-              <label htmlFor={`${id ?? 'contact'}-new-name`} className="block text-sm text-slate-800 mb-1">
+              <label htmlFor={`${baseId}-new-name`} className="block text-sm text-slate-800 mb-1">
                 Nome
               </label>
               <input
                 ref={nameRef}
-                id={`${id ?? 'contact'}-new-name`}
+                id={`${baseId}-new-name`}
                 value={name}
                 onChange={(e) => (setName(e.target.value), setCreateError(null))}
                 placeholder="Digite o nome do contato..."

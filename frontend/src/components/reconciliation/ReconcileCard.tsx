@@ -3,7 +3,8 @@ import { ArrowDown, ArrowLeftRight, ArrowUp, Calendar, Link2, Loader2, Pencil, P
 import { useCompany } from '../../context/CompanyContext';
 import { api, errorMessage } from '../../lib/api';
 import { categoryChoices } from '../../lib/categories';
-import { brDate, contactOptions, money } from '../../lib/entries';
+import { brDate, money } from '../../lib/entries';
+import { ContactField } from '../entries/ContactField';
 import { CostCenterOption } from '../common/useCostCenters';
 import { Transaction } from '../../types';
 import { SearchSelect } from '../common/SearchSelect';
@@ -96,7 +97,6 @@ export const ReconcileCard: React.FC<{
       })),
     [categories, isCredit],
   );
-  const contOptions = useMemo(() => contactOptions(contacts, isCredit ? 'RECEIVABLE' : 'PAYABLE'), [contacts, isCredit]);
   const otherAccounts = accounts.filter((a) => a.id !== tx.bankAccountId);
   const base = `/companies/${currentCompany.id}/transactions`;
 
@@ -252,7 +252,7 @@ export const ReconcileCard: React.FC<{
                       <option value="transfer">Transferência</option>
                     </select>
                     {kind === 'entry' ? (
-                      <SearchSelect value={form.contactId} onChange={(v) => set('contactId', v)} options={contOptions} placeholder="Nome" clearable size="sm" />
+                      <ContactField value={form.contactId} onChange={(v) => set('contactId', v)} direction={isCredit ? 'RECEIVABLE' : 'PAYABLE'} placeholder="Nome" size="sm" />
                     ) : (
                       <select aria-label={isCredit ? 'Conta de origem' : 'Conta de destino'} value={form.otherAccountId} onChange={(e) => set('otherAccountId', e.target.value)} className={`${inputClass} ${form.otherAccountId ? '' : 'text-slate-400'}`}>
                         <option value="">{isCredit ? 'Veio da conta...' : 'Foi para a conta...'}</option>
