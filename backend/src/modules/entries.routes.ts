@@ -77,6 +77,8 @@ const createSchema = z
         type: z.enum(['RECURRING', 'INSTALLMENT']),
         frequency: z.enum(['WEEKLY', 'BIWEEKLY', 'MONTHLY', 'BIMONTHLY', 'QUARTERLY', 'SEMIANNUAL', 'ANNUAL']).default('MONTHLY'),
         occurrences: z.number().int().min(2).max(360).nullish(), // null = sem data de término
+        // Parcelamento: TOTAL = o valor é dividido entre as parcelas; EACH = cada parcela tem o valor informado
+        amountMode: z.enum(['TOTAL', 'EACH']).default('TOTAL'),
       })
       .nullish(),
     // "não agendado": já nasce baixado numa conta, ou conciliado com uma linha do extrato importado
@@ -269,8 +271,8 @@ export function entriesRouter(direction: EntryDirection) {
     const result = await prisma.$transaction(async (db) => {
       // Recorrência / parcelamento
       if (body.recurrence) {
-        const { type, frequency, occurrences } = body.recurrence;
-        const amounts = type === 'INSTALLMENT' ? splitInstallments(D(body.amount), occurrences!) : null;
+        const { type, frequency, occurrences, amountMode } = body.recurrence;
+        const amounts = type === 'INSTALLMENT' && amountMode === 'TOTAL' ? splitInstallments(D(body.amount), occurrences!) : null;
         const recurrence = await db.recurrence.create({
           data: {
             ...base,

@@ -40,12 +40,25 @@ interface FormState {
   discount: number;
   recurring: boolean;
   recurrenceType: 'INSTALLMENT' | 'RECURRING';
+  /** Parcelamento: EACH = cada parcela com o valor informado (padrão, como no Nibo); TOTAL = valor dividido */
+  installmentMode: 'EACH' | 'TOTAL';
   frequency: string;
   occurrences: number;
   endless: boolean;
   isStarred: boolean;
   scheduledAtBank: boolean;
   split: SplitDraft | null; // rateio por categoria/centro de custo
+}
+
+/** Data da ocorrência N (mesma regra do backend: mês curto usa o último dia) */
+const MONTHS_STEP: Record<string, number> = { MONTHLY: 1, BIMONTHLY: 2, QUARTERLY: 3, SEMIANNUAL: 6, ANNUAL: 12 };
+function occurrenceDate(start: string, frequency: string, index: number): string {
+  const [y, m, d] = start.split('-').map(Number);
+  const months = MONTHS_STEP[frequency];
+  const date = months
+    ? new Date(Date.UTC(y, m - 1 + months * index, Math.min(d, new Date(Date.UTC(y, m - 1 + months * index + 1, 0)).getUTCDate())))
+    : new Date(Date.UTC(y, m - 1, d) + index * (frequency === 'WEEKLY' ? 7 : 14) * 86_400_000);
+  return date.toISOString().slice(0, 10);
 }
 
 const emptyForm = (): FormState => ({
@@ -66,6 +79,7 @@ const emptyForm = (): FormState => ({
   discount: 0,
   recurring: false,
   recurrenceType: 'INSTALLMENT',
+  installmentMode: 'EACH',
   frequency: 'MONTHLY',
   occurrences: 2,
   endless: false,
@@ -194,6 +208,8 @@ export const EntryDrawer: React.FC<EntryDrawerProps> = ({ config, mode, entryId,
     setSettleForm(null);
     setSearchingStatement(false);
     const fresh = emptyForm();
+    // Agendar: competência e "previsto para" começam iguais ao vencimento (como no Nibo)
+    if (mode === 'schedule') Object.assign(fresh, { issueDate: fresh.dueDate, expectedDate: fresh.dueDate });
     setForm({ ...fresh, bankAccountId: defaultBankAccountId ?? (accounts.length === 1 ? accounts[0].id : '') });
     if (statementTx) {
       setForm({
@@ -303,7 +319,12 @@ export const EntryDrawer: React.FC<EntryDrawerProps> = ({ config, mode, entryId,
           dueDate: form.dueDate,
           expectedDate: form.expectedDate || null,
           ...(form.recurring && {
-            recurrence: { type: form.recurrenceType, frequency: form.frequency, occurrences: form.endless ? null : form.occurrences },
+            recurrence: {
+              type: form.recurrenceType,
+              frequency: form.frequency,
+              occurrences: form.endless ? null : form.occurrences,
+              ...(form.recurrenceType === 'INSTALLMENT' && { amountMode: form.installmentMode }),
+            },
           }),
         });
         notify(created.created > 1 ? `${created.created} lançamentos agendados` : 'Lançamento agendado');
@@ -311,7 +332,14 @@ export const EntryDrawer: React.FC<EntryDrawerProps> = ({ config, mode, entryId,
       onChanged();
       if (!isEdit && keepCreating) {
         // Mantém conta, datas e categoria para lançar o próximo rapidamente
-        setForm((f) => ({ ...emptyForm(), bankAccountId: f.bankAccountId, settleDate: f.settleDate, dueDate: f.dueDate, categoryId: f.categoryId }));
+        setForm((f) => ({
+          ...emptyForm(),
+          bankAccountId: f.bankAccountId,
+          settleDate: f.settleDate,
+          dueDate: f.dueDate,
+          ...(mode === 'schedule' && { issueDate: f.dueDate, expectedDate: f.dueDate }),
+          categoryId: f.categoryId,
+        }));
         setSubmitted(false);
       } else {
         onClose();
@@ -355,14 +383,37 @@ export const EntryDrawer: React.FC<EntryDrawerProps> = ({ config, mode, entryId,
     run(() => api.post(`${base}/${entry.id}/settlements/${txId}/reverse`), 'Baixa estornada');
   };
 
-  const installmentPreview = () => {
-    if (!isInstallment || form.amount <= 0 || form.occurrences < 2) return null;
+  /** Vencimento: muda junto competência e "previsto para" enquanto elas não forem ajustadas à mão */
+  const changeDueDate = (value: string) => {
+    setForm((f) => {
+      const follows = (d: string) => mode === 'schedule' && (!d || d === f.dueDate);
+      return { ...f, dueDate: value, issueDate: follows(f.issueDate) ? value : f.issueDate, expectedDate: follows(f.expectedDate) ? value : f.expectedDate };
+    });
+    if (errors.dueDate) setErrors((e) => ({ ...e, dueDate: undefined }));
+  };
+
+  /** Resumo do parcelamento (como no Nibo): 1º e último vencimento, valor da parcela e total */
+  const installmentSummary = () => {
+    if (!isInstallment || form.occurrences < 2 || !form.dueDate) return null;
+    const n = form.occurrences;
     const cents = Math.round(form.amount * 100);
-    const each = Math.floor(cents / form.occurrences);
-    const first = cents - each * (form.occurrences - 1);
-    return first === each
-      ? `${form.occurrences}x de R$ ${money(each / 100)}`
-      : `1x de R$ ${money(first / 100)} + ${form.occurrences - 1}x de R$ ${money(each / 100)}`;
+    const dividing = form.installmentMode === 'TOTAL';
+    const each = dividing ? Math.floor(cents / n) : cents;
+    const first = dividing ? cents - each * (n - 1) : cents;
+    const totalCents = dividing ? cents : cents * n;
+    const lastDue = occurrenceDate(form.dueDate, form.frequency, n - 1);
+    return (
+      <div className="flex flex-wrap items-center gap-x-8 gap-y-1 px-4 py-3 rounded bg-slate-100 text-sm text-slate-800">
+        <span>
+          Vencimento: Primeira {brDate(form.dueDate)} / Última {brDate(lastDue)}
+        </span>
+        <span>
+          Parcela {frequencyLabel(form.frequency).toLowerCase()}: {money(each / 100)}
+          {first !== each && <span className="text-slate-500"> (1ª: {money(first / 100)})</span>}
+        </span>
+        <span>Total parcelado: {money(totalCents / 100)}</span>
+      </div>
+    );
   };
 
   return (
@@ -449,7 +500,7 @@ export const EntryDrawer: React.FC<EntryDrawerProps> = ({ config, mode, entryId,
                   </Field>
                 ) : (
                   <Field label="Vencimento" htmlFor="en-due" error={errors.dueDate} className="md:col-span-3">
-                    <input id="en-due" type="date" value={form.dueDate} onChange={(e) => set('dueDate', e.target.value)} className={inputClass(errors.dueDate)} />
+                    <input id="en-due" type="date" value={form.dueDate} onChange={(e) => changeDueDate(e.target.value)} className={inputClass(errors.dueDate)} />
                   </Field>
                 )}
                 <Field label="Competência" optional htmlFor="en-issue" className="md:col-span-3">
@@ -518,7 +569,7 @@ export const EntryDrawer: React.FC<EntryDrawerProps> = ({ config, mode, entryId,
                 <Field label="Detalhamento" optional htmlFor="en-notes" className="md:col-span-5">
                   <input id="en-notes" value={form.notes} onChange={(e) => set('notes', e.target.value)} className={inputClass()} />
                 </Field>
-                <Field label={isInstallment ? 'Valor total' : 'Valor'} htmlFor="en-amount" error={errors.amount} className="md:col-span-3">
+                <Field label={isInstallment && form.installmentMode === 'TOTAL' ? 'Valor total' : 'Valor'} htmlFor="en-amount" error={errors.amount} className="md:col-span-3">
                   <MoneyInput
                     id="en-amount"
                     value={form.amount}
@@ -584,28 +635,51 @@ export const EntryDrawer: React.FC<EntryDrawerProps> = ({ config, mode, entryId,
                 {mode === 'schedule' && (
                   <Toggle checked={form.recurring} onChange={(v) => set('recurring', v)} label="Recorrência ou Parcelamento">
                     <div className="space-y-4">
-                      <div className="flex gap-6" role="radiogroup">
+                      {/* Como no Nibo: Recorrência | Parcelamento */}
+                      <div className="inline-flex rounded-full bg-slate-100 p-1" role="radiogroup" aria-label="Tipo">
                         {(
                           [
-                            ['INSTALLMENT', 'Parcelamento', 'Divide o valor total em parcelas'],
-                            ['RECURRING', 'Recorrência', 'Repete o mesmo valor (aluguel, mensalidade...)'],
+                            ['RECURRING', 'Recorrência'],
+                            ['INSTALLMENT', 'Parcelamento'],
                           ] as const
-                        ).map(([value, label, hint]) => (
-                          <label key={value} className="flex items-start gap-2 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="recurrenceType"
-                              checked={form.recurrenceType === value}
-                              onChange={() => setForm((f) => ({ ...f, recurrenceType: value, endless: value === 'INSTALLMENT' ? false : f.endless }))}
-                              className="mt-1 accent-nibo-blue"
-                            />
-                            <span>
-                              <span className="block text-sm text-slate-800">{label}</span>
-                              <span className="block text-xs text-slate-500">{hint}</span>
-                            </span>
-                          </label>
+                        ).map(([value, label]) => (
+                          <button
+                            key={value}
+                            type="button"
+                            role="radio"
+                            aria-checked={form.recurrenceType === value}
+                            onClick={() => setForm((f) => ({ ...f, recurrenceType: value, endless: value === 'INSTALLMENT' ? false : f.endless }))}
+                            className={`px-5 h-9 rounded-full text-sm transition-colors ${
+                              form.recurrenceType === value ? 'bg-white text-slate-900 font-medium shadow-sm' : 'text-nibo-blue hover:bg-white/60'
+                            }`}
+                          >
+                            {label}
+                          </button>
                         ))}
                       </div>
+
+                      {isInstallment && (
+                        <div className="space-y-2" role="radiogroup" aria-label="Valor das parcelas">
+                          {(
+                            [
+                              ['EACH', 'As parcelas terão o mesmo valor do agendamento'],
+                              ['TOTAL', 'O valor do agendamento será dividido entre as parcelas'],
+                            ] as const
+                          ).map(([value, label]) => (
+                            <label key={value} className="flex items-center gap-2 cursor-pointer text-sm text-slate-800">
+                              <input
+                                type="radio"
+                                name="installmentMode"
+                                checked={form.installmentMode === value}
+                                onChange={() => set('installmentMode', value)}
+                                className="accent-nibo-blue"
+                              />
+                              {label}
+                            </label>
+                          ))}
+                        </div>
+                      )}
+
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
                         <Field label="Frequência" htmlFor="en-freq">
                           <div className="relative">
@@ -619,7 +693,7 @@ export const EntryDrawer: React.FC<EntryDrawerProps> = ({ config, mode, entryId,
                             <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 border-x-[5px] border-x-transparent border-t-[6px] border-t-slate-500" />
                           </div>
                         </Field>
-                        <Field label={isInstallment ? 'Nº de parcelas' : 'Nº de ocorrências'} htmlFor="en-occ" error={errors.occurrences}>
+                        <Field label={isInstallment ? 'Parcelas' : 'Nº de ocorrências'} htmlFor="en-occ" error={errors.occurrences}>
                           <input
                             id="en-occ"
                             type="number"
@@ -631,15 +705,21 @@ export const EntryDrawer: React.FC<EntryDrawerProps> = ({ config, mode, entryId,
                             className={`${inputClass(errors.occurrences)} disabled:bg-slate-100`}
                           />
                         </Field>
-                        {form.recurrenceType === 'RECURRING' ? (
+                        {form.recurrenceType === 'RECURRING' && (
                           <label className="flex items-center gap-2 text-sm text-slate-700 pb-2.5 cursor-pointer">
                             <input type="checkbox" checked={form.endless} onChange={(e) => set('endless', e.target.checked)} className="accent-nibo-blue" />
                             Sem data de término
                           </label>
-                        ) : (
-                          <p className="text-sm text-slate-600 pb-2.5">{installmentPreview()}</p>
                         )}
                       </div>
+
+                      {isInstallment && form.installmentMode === 'TOTAL' && (
+                        <div className="flex items-start gap-2 px-4 py-3 rounded border-l-4 border-nibo-blue bg-nibo-blueLight text-sm text-slate-700">
+                          <AlertCircle className="w-4 h-4 mt-0.5 text-nibo-blue shrink-0" />
+                          Serão criados agendamentos para cada parcela e seus valores divididos proporcionalmente entre as categorias.
+                        </div>
+                      )}
+                      {installmentSummary()}
                     </div>
                   </Toggle>
                 )}
