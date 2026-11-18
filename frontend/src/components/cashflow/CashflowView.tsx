@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Download, Printer, Pencil, ArrowUp, ArrowDown, Loader2, AlertTriangle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Printer, Pencil, ArrowUp, ArrowDown, Loader2, AlertTriangle } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine } from 'recharts';
 import * as XLSX from 'xlsx';
 import { useCompany } from '../../context/CompanyContext';
@@ -7,6 +7,9 @@ import { api, errorMessage } from '../../lib/api';
 import { accountDetails } from '../../lib/accounts';
 import { ENTRY_CONFIG, EntryDirection, brDate, money } from '../../lib/entries';
 import { EntryDrawer } from '../entries/EntryDrawer';
+import { ExportMenu } from '../reports/ExportMenu';
+import { PdfRow, exportTablePdf } from '../../lib/pdfExport';
+import { accounting } from '../../lib/reports';
 import { StatementSearchDialog } from '../reconciliation/StatementSearchDialog';
 
 interface CashflowItem {
@@ -131,6 +134,41 @@ export const CashflowView: React.FC = () => {
     XLSX.writeFile(wb, `Fluxo_de_Caixa_${currentCompany.tradeName.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\W+/g, '_')}_${data.from}_${data.to}.xlsx`);
   };
 
+  /** Mesmo conteúdo do Excel em PDF: passados e futuros (com saldo acumulado) numa tabela só */
+  const exportPdf = async () => {
+    if (!data) return;
+    const line = (i: CashflowItem, withBalance: boolean): PdfRow => ({
+      cells: [
+        brDate(i.date),
+        brDate(i.dueDate),
+        i.contactName ?? '',
+        i.description,
+        i.direction === 'RECEIVABLE' ? money(i.amount) : '',
+        i.direction === 'PAYABLE' ? money(i.amount) : '',
+        withBalance && i.balance !== null && i.balance !== undefined ? accounting(i.balance) : '',
+      ],
+    });
+    const body: PdfRow[] = [
+      { cells: ['Agendamentos passados (vencidos em aberto)'], style: 'section', span: true },
+      ...(data.past.length ? data.past.map((i) => line(i, false)) : [{ cells: ['', '', '', 'Nenhum agendamento passado em aberto', '', '', ''] }]),
+      { cells: ['Agendamentos futuros'], style: 'section', span: true },
+      { cells: [brDate(data.today), '', '', 'Saldo anterior', '', '', accounting(data.future.openingBalance)], style: 'group' },
+      ...data.future.items.map((i) => line(i, true)),
+    ];
+    const fileName = `Fluxo_de_Caixa_${currentCompany.tradeName.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\W+/g, '_')}_${data.from}_${data.to}.pdf`;
+    await exportTablePdf({
+      fileName,
+      company: currentCompany,
+      title: 'Fluxo de caixa',
+      subtitle: `Período: ${brDate(data.from)} a ${brDate(data.to)}`,
+      head: ['Data', 'Vencimento', 'Nome', 'Descrição', 'Entrada', 'Saída', 'Saldo'],
+      body,
+      rightAligned: [4, 5, 6],
+      redNegatives: true,
+      widths: { 0: 62, 1: 66, 4: 78, 5: 78, 6: 84 },
+    });
+  };
+
   const renderDateCell = (item: CashflowItem) =>
     editingDate === item.id ? (
       <input
@@ -221,9 +259,7 @@ export const CashflowView: React.FC = () => {
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-medium text-slate-700">Fluxo de Caixa</h1>
         <div className="flex items-center gap-1">
-          <button onClick={exportXlsx} disabled={!data} aria-label="Exportar para Excel" title="Exportar para Excel" className="p-2 rounded text-slate-500 hover:bg-slate-100 disabled:opacity-40">
-            <Download className="w-4 h-4" />
-          </button>
+          <ExportMenu disabled={!data} onExcel={exportXlsx} onPdf={exportPdf} />
           <button onClick={() => window.print()} aria-label="Imprimir" title="Imprimir" className="p-2 rounded text-slate-500 hover:bg-slate-100">
             <Printer className="w-4 h-4" />
           </button>

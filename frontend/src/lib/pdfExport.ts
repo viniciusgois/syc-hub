@@ -13,6 +13,8 @@ export interface PdfRow {
   style?: PdfRowStyle;
   /** Recuo da 1ª coluna (0 = sem recuo) */
   indent?: number;
+  /** Título de seção: o 1º texto ocupa a largura toda da tabela */
+  span?: boolean;
 }
 
 export interface PdfTableOptions {
@@ -85,7 +87,7 @@ export async function exportTablePdf(o: PdfTableOptions) {
     startY: y + 12,
     margin: { left: margin, right: margin, top: margin, bottom: margin + 10 },
     head: [o.head],
-    body: o.body.map((r) => r.cells),
+    body: o.body.map((r) => (r.span ? [{ content: r.cells[0], colSpan: o.head.length }] : r.cells)),
     foot: o.foot ? [o.foot] : undefined,
     showFoot: 'lastPage',
     theme: 'plain',

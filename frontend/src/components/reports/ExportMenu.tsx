@@ -2,7 +2,13 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Download, FileSpreadsheet, FileText, Loader2 } from 'lucide-react';
 
 /** Botão "Exportar" dos relatórios: Excel (.xlsx) ou PDF (para enviar ao dono da empresa) */
-export const ExportMenu: React.FC<{ disabled?: boolean; onExcel: () => void; onPdf: () => Promise<void> }> = ({ disabled, onExcel, onPdf }) => {
+export const ExportMenu: React.FC<{
+  disabled?: boolean;
+  onExcel: () => void;
+  onPdf: () => Promise<void>;
+  /** Rodapé de janela: o menu abre para cima, alinhado à esquerda */
+  placement?: 'down-right' | 'up-left';
+}> = ({ disabled, onExcel, onPdf, placement = 'down-right' }) => {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -37,7 +43,7 @@ export const ExportMenu: React.FC<{ disabled?: boolean; onExcel: () => void; onP
         {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} Exportar <ChevronDown className="w-3.5 h-3.5" />
       </button>
       {open && (
-        <div role="menu" className="absolute right-0 mt-1 w-48 bg-white border border-slate-200 rounded shadow-lg z-30 py-1">
+        <div role="menu" className={`absolute ${placement === 'up-left' ? 'left-0 bottom-full mb-1' : 'right-0 mt-1'} w-48 bg-white border border-slate-200 rounded shadow-lg z-30 py-1`}>
           <button
             type="button"
             role="menuitem"

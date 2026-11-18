@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Download, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useCompany } from '../../context/CompanyContext';
 import { api, errorMessage } from '../../lib/api';
 import { ENTRY_CONFIG } from '../../lib/entries';
@@ -8,7 +8,8 @@ import { Modal } from '../common/Modal';
 import { useCostCenters } from '../common/useCostCenters';
 import { EntryDrawer } from '../entries/EntryDrawer';
 import { RowsTable } from './RowsTable';
-import { Column, exportRows } from './reportTable';
+import { Column, exportRows, exportRowsPdf } from './reportTable';
+import { ExportMenu } from './ExportMenu';
 
 export interface PanelCell {
   label: string; // "Despesas com veículos · Jul/2026"
@@ -61,16 +62,25 @@ export const PanelDetailsModal: React.FC<{ cell: PanelCell; onClose: () => void;
         onClose={onClose}
         width="max-w-[min(1400px,95vw)]"
         footer={
-          <button
-            type="button"
-            disabled={!rows?.length}
-            onClick={() =>
-              exportRows(`Lancamentos_${fileSafe(cell.label)}.xlsx`, cell.label, `${currentCompany.legalName} | ${cash ? 'Regime de caixa' : 'Regime de competência'}`, columns, rows ?? [])
-            }
-            className="mr-auto text-sm text-nibo-blue hover:underline flex items-center gap-1.5 disabled:opacity-50"
-          >
-            <Download className="w-4 h-4" /> Exportar (.xlsx)
-          </button>
+          <div className="mr-auto">
+            <ExportMenu
+              placement="up-left"
+              disabled={!rows?.length}
+              onExcel={() =>
+                exportRows(`Lancamentos_${fileSafe(cell.label)}.xlsx`, cell.label, `${currentCompany.legalName} | ${cash ? 'Regime de caixa' : 'Regime de competência'}`, columns, rows ?? [])
+              }
+              onPdf={() =>
+                exportRowsPdf(
+                  `Lancamentos_${fileSafe(cell.label)}.pdf`,
+                  currentCompany,
+                  cell.label,
+                  `${cash ? 'Regime de caixa' : 'Regime de competência'} · ${cell.from.split('-').reverse().join('/')} a ${cell.to.split('-').reverse().join('/')}`,
+                  columns,
+                  rows ?? [],
+                )
+              }
+            />
+          </div>
         }
       >
         <p className="text-xs text-slate-500 mb-3">
