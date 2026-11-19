@@ -1,0 +1,41 @@
+# Confere, de fora, que o deploy que o Dokploy fez está mesmo no ar. O Dokploy marca o deploy como "done" mesmo quando
+# o Swarm devolveu a versão anterior porque a nova não ficou saudável. Esta Action espera o /api/health responder com
+# o commit do push e fica VERMELHA se ele não chegar, para alguém olhar.
+# Variável do repositório (Settings → Secrets and variables → Actions → Variables): PROD_URL, por exemplo
+# https://hub.saveyourcompany.com.br. Sem ela, a Action só avisa e não falha (enquanto a VPS não está no ar).
+
+name: Conferir deploy
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Um push novo cancela a conferência do anterior (que nunca chegaria: o commit no ar é o novo).
+concurrency:
+  group: conferir-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  conferir:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: O ambiente responde com este commit
+        env:
+          URL: ${{ vars.PROD_URL }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "$URL" ]; then echo "::warning::PROD_URL não definida: nada a conferir"; exit 0; fi
+          quer=${SHA:0:7}
+          atual=""
+          for _ in $(seq 1 40); do
+            atual=$(curl -fsS --max-time 10 "$URL/api/health" | jq -r '.commit // empty' || true)
+            if [ "${atual:0:7}" = "$quer" ]; then echo "no ar com $quer"; exit 0; fi
+            sleep 20
+          done
+          echo "::error::depois de 20 min, $URL/api/health ainda responde com '${atual:-nada}', não com $quer: o deploy falhou ou voltou para a versão anterior (veja o serviço no Dokploy)"
+          exit 1

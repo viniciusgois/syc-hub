@@ -2,7 +2,8 @@
  * Cliente HTTP da API do SYC Hub.
  * A sessão vai no cookie httpOnly gravado pelo login (credentials: 'include').
  */
-const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3333/api';
+// Sem VITE_API_URL: em produção a API está no mesmo domínio (/api); em desenvolvimento, no backend local
+const BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:3333/api');
 
 const TOKEN_KEY = 'syc_session_token';
 export const setAuthToken = (token: string | null) => {

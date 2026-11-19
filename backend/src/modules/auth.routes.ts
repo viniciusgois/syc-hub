@@ -9,22 +9,37 @@ export const authRouter = Router();
 
 const email = z.email('E-mail inválido').transform((e) => e.trim().toLowerCase());
 
-// Limite de tentativas de login por e-mail + IP (memória do processo; suficiente para uma instância)
+// Limite de tentativas de login (memória do processo; suficiente para uma instância):
+// - por e-mail + IP: 10 erros em 15 min;
+// - por IP: 30 erros em 15 min, contra quem testa muitos e-mails. Só com TRUST_PROXY (atrás do proxy da VPS);
+//   sem ele, todos chegam com o IP do proxy e um limite por IP travaria todo mundo junto.
 const ATTEMPTS = 10;
+const IP_ATTEMPTS = 30;
 const WINDOW_MS = 15 * 60_000;
 const attempts = new Map<string, { count: number; first: number }>();
-function checkRate(key: string) {
-  const now = Date.now();
+const limitByIp = !!process.env.TRUST_PROXY;
+function tooMany(key: string, max: number, now: number) {
   const a = attempts.get(key);
-  if (a && now - a.first < WINDOW_MS && a.count >= ATTEMPTS) {
+  return !!a && now - a.first < WINDOW_MS && a.count >= max;
+}
+function checkRate(key: string, ip: string | undefined) {
+  const now = Date.now();
+  if (tooMany(key, ATTEMPTS, now) || (limitByIp && ip && tooMany(`ip|${ip}`, IP_ATTEMPTS, now))) {
     throw new HttpError(429, 'Muitas tentativas. Aguarde alguns minutos e tente de novo');
   }
 }
-function registerFailure(key: string) {
+function registerFailure(key: string, ip: string | undefined) {
   const now = Date.now();
-  const a = attempts.get(key);
-  attempts.set(key, a && now - a.first < WINDOW_MS ? { ...a, count: a.count + 1 } : { count: 1, first: now });
+  for (const k of limitByIp && ip ? [key, `ip|${ip}`] : [key]) {
+    const a = attempts.get(k);
+    attempts.set(k, a && now - a.first < WINDOW_MS ? { ...a, count: a.count + 1 } : { count: 1, first: now });
+  }
 }
+// Limpa contagens vencidas a cada 15 min (a memória não cresce sem fim)
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, a] of attempts) if (now - a.first >= WINDOW_MS) attempts.delete(k);
+}, WINDOW_MS).unref();
 
 const publicUser = (u: { id: string; name: string; email: string }) => ({ id: u.id, name: u.name, email: u.email });
 
@@ -66,10 +81,10 @@ authRouter.post('/setup', async (req, res) => {
 authRouter.post('/login', async (req, res) => {
   const body = z.object({ email, password: z.string().min(1, 'Informe a senha') }).parse(req.body);
   const key = `${body.email}|${req.ip}`;
-  checkRate(key);
+  checkRate(key, req.ip);
   const user = await prisma.user.findUnique({ where: { email: body.email } });
   if (!user || !user.isActive || !(await verifyPassword(body.password, user.passwordHash))) {
-    registerFailure(key);
+    registerFailure(key, req.ip);
     throw new HttpError(401, 'E-mail ou senha incorretos');
   }
   attempts.delete(key);

@@ -54,7 +54,9 @@ export async function createSession(userId: string, userAgent?: string) {
 
 export function sessionCookie(token: string | null) {
   const isProd = process.env.NODE_ENV === 'production';
-  const sameSite = isProd ? '; SameSite=None; Secure' : '; SameSite=Lax';
+  // Front e API no mesmo domínio (SERVE_FRONTEND=true): Lax basta e é o mais seguro; em domínios diferentes, None
+  const sameDomain = process.env.SERVE_FRONTEND === 'true';
+  const sameSite = !isProd ? '; SameSite=Lax' : sameDomain ? '; SameSite=Lax; Secure' : '; SameSite=None; Secure';
   return token
     ? `${SESSION_COOKIE}=${token}; HttpOnly${sameSite}; Path=/; Max-Age=${SESSION_DAYS * 86_400}`
     : `${SESSION_COOKIE}=; HttpOnly${sameSite}; Path=/; Max-Age=0`;
