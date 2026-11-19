@@ -43,7 +43,7 @@ o PDF da importação só passa pela memória).
 |---|---|---|---|---|
 | 0 | Cópia de segurança do banco do Render (o gratuito não tem backup): `pg_dump` 18 num contêiner temporário na VPS, lendo `~/.syc-render-db` sem mostrar a senha; arquivo numa pasta restrita do SYC e, depois, no R2 | Claude | arquivo restaurado num Postgres 18 de ensaio, contagens iguais | apagar o arquivo |
 | 1 | Código (este PR) | Claude | PR revisado | não fazer o merge |
-| 2 | Projeto "SYC Hub" no Dokploy: banco `postgres:18.x` (versão exata, sem porta externa) e app (GitHub `viniciusgois/syc-hub`, `main`, Dockerfile); Swarm Settings e limites (app 768 MB, banco 512 MB) | Dono no painel; Claude pela API | banco e app criados; Planejaqui 200 | apagar o projeto |
+| 2 | Projeto "SYC Hub" no Dokploy: banco `postgres:18.7` (versão exata; o Render está no 18.6; sem porta externa) e app (GitHub `viniciusgois/syc-hub`, `main`, Dockerfile); Swarm Settings e limites (app 768 MB, banco 512 MB) | Dono no painel; Claude pela API | banco e app criados; Planejaqui 200 | apagar o projeto |
 | 3 | Primeiro deploy em `hub.saveyourcompany.com.br` (registro A só para 147.93.6.15, TTL 300), banco vazio e um usuário de teste pelo script | Dono (DNS); Claude verifica | HTTPS, `/api/health` com o commit, Action verde, troca de versão sem erro, versão quebrada volta sozinha | apagar o app e o registro |
 | 4 | Backup: bucket `syc-hub-backups` no R2 (chave que só grava nele, trava de 30 dias, regra de 90), backup diário às 03:15 | Dono (Cloudflare e painel) | arquivo no bucket e ensaio de restauração | desligar o agendamento |
 | 5 | Ensaio da migração: cópia do Render restaurada num banco de ensaio, contagem de todas as tabelas | Claude | contagens idênticas | apagar o banco de ensaio |
@@ -86,4 +86,5 @@ Cada usuário entra de novo uma vez: o login fica guardado no navegador por ende
 
 | Data | O quê | Resultado |
 |---|---|---|
+| 19/11/2026 | Fase 0: cópia de segurança do banco do Render (PostgreSQL 18.6, 22 MB) com `pg_dump` 18.7 num contêiner temporário na VPS; arquivo em `/root/syc-migracao` (só root) | cópia de 1,8 MB em 17 s; ensaio de restauração num Postgres 18 sem rede em 1 s, sem avisos; **20 tabelas, contagens idênticas** (ex.: 7.040 transações, 5.766 contas a pagar, 1.689 a receber) |
 | 19/11/2026 | Imagem simulada sem Docker: só dependências de produção, `prisma migrate deploy`, API entregando as telas | `/api/health` com commit, links `?acesso=`, cookie `Lax; Secure`, limite por IP (429 no 31º erro), SIGTERM com calma, telas carregando dados pela `/api` |
