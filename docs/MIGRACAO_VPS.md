@@ -86,5 +86,7 @@ Cada usuário entra de novo uma vez: o login fica guardado no navegador por ende
 
 | Data | O quê | Resultado |
 |---|---|---|
+| 19/11/2026 | Fases 2 a 4: projeto "SYC Hub" no Dokploy (banco `postgres:18.7` sem porta externa, limite 512 MB; app com Dockerfile, verificação de saúde, troca start-first com rollback, limite 768 MB), domínio `hub.saveyourcompany.com.br` com Let's Encrypt; backup diário 03:15 (Brasília) no bucket `syc-hub-backups` | primeiro deploy saudável (commit d0789b9); backup de 1,8 MB no R2; ensaio de restauração a partir do R2 num Postgres 18.7 sem rede: 20 tabelas, contagens idênticas |
+| 19/11/2026 | Fase 6 (virada): Render suspenso, cópia nova (19 s), banco da VPS recriado e restaurado (1 s, sem avisos), app religado; Vercel redirecionando (temporário, 307) para o `hub` | **20 tabelas, contagens idênticas**; app saudável com os dados reais; dono conferiu login e saldos |
 | 19/11/2026 | Fase 0: cópia de segurança do banco do Render (PostgreSQL 18.6, 22 MB) com `pg_dump` 18.7 num contêiner temporário na VPS; arquivo em `/root/syc-migracao` (só root) | cópia de 1,8 MB em 17 s; ensaio de restauração num Postgres 18 sem rede em 1 s, sem avisos; **20 tabelas, contagens idênticas** (ex.: 7.040 transações, 5.766 contas a pagar, 1.689 a receber) |
 | 19/11/2026 | Imagem simulada sem Docker: só dependências de produção, `prisma migrate deploy`, API entregando as telas | `/api/health` com commit, links `?acesso=`, cookie `Lax; Secure`, limite por IP (429 no 31º erro), SIGTERM com calma, telas carregando dados pela `/api` |

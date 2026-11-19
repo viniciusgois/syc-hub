@@ -1,9 +1,9 @@
 {
-  "rewrites": [
+  "redirects": [
     {
-      "source": "/(.*)",
-      "destination": "/index.html"
+      "source": "/:path*",
+      "destination": "https://hub.saveyourcompany.com.br/:path*",
+      "permanent": false
     }
   ]
 }
-
