@@ -1,0 +1,10 @@
+# A pasta .git FICA (o Dockerfile lê o commit dela)
+**/node_modules
+**/dist
+# .env e .env.local nunca entram na imagem (o .env.local do front apontaria a API para o localhost)
+**/.env
+**/.env.*
+!**/.env.example
+**/*.log
+**/.DS_Store
+KNOWLEDGE_BASE_PF.md

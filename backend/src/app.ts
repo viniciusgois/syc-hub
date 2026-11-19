@@ -1,7 +1,11 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import express, { Router } from 'express';
 import cors from 'cors';
 import { Prisma } from '@prisma/client';
 import { errorHandler } from './middleware/errorHandler.js';
+import { HttpError } from './lib/http.js';
+import { APP_COMMIT, checkDatabase } from './lib/health.js';
 import { requireCompany, writeRequires } from './middleware/requireCompany.js';
 import { authenticate } from './middleware/authenticate.js';
 import { authRouter } from './modules/auth.routes.js';
@@ -22,9 +26,16 @@ import { niboImportsRouter } from './modules/niboImports.routes.js';
 
 export function createApp() {
   const app = express();
+  const serveFrontend = process.env.SERVE_FRONTEND === 'true';
 
-  // Cookie de sessão entre o front (5173) e a API: origens explícitas + credentials
-  app.use(cors({ origin: process.env.CORS_ORIGIN?.split(',') ?? true, credentials: true }));
+  // Atrás do proxy (Traefik na VPS): req.ip passa a ser o IP de quem acessa (usado no limite de login)
+  if (process.env.TRUST_PROXY) app.set('trust proxy', Number(process.env.TRUST_PROXY) || process.env.TRUST_PROXY);
+
+  // Front e API em domínios diferentes (Vercel + Render, ou o Vite em desenvolvimento): CORS com credentials.
+  // Num serviço só (SERVE_FRONTEND=true), tudo fica no mesmo domínio e o CORS só liga se CORS_ORIGIN for definida.
+  if (!serveFrontend || process.env.CORS_ORIGIN) {
+    app.use(cors({ origin: process.env.CORS_ORIGIN?.split(',') ?? true, credentials: true }));
+  }
   app.use(express.json({ limit: '10mb' }));
 
   // Decimal do Prisma serializa como string; a API expõe valores monetários como number
@@ -35,6 +46,19 @@ export function createApp() {
 
   app.get('/health', (_req, res) => {
     res.json({ status: 'ok' });
+  });
+
+  // Saúde para o Dokploy/Swarm (troca de versão sem queda e volta automática) e para a Action "Conferir deploy".
+  // Fica antes de tudo (sem login, sem limite); 503 quando o banco não responde.
+  app.get('/api/health', async (_req, res) => {
+    const database = await checkDatabase();
+    res.status(database ? 200 : 503).json({
+      status: database ? 'ok' : 'erro',
+      service: 'syc-hub',
+      database: database ? 'ok' : 'sem resposta',
+      commit: APP_COMMIT,
+      timestamp: new Date().toISOString(),
+    });
   });
 
   // Permissões por papel: leitura para todos os membros; escrita conforme a área
@@ -60,9 +84,18 @@ export function createApp() {
   app.use('/api/companies', authenticate, companiesRouter);
   app.use('/api/companies/:companyId', authenticate, scoped);
 
-  app.use((_req, res) => {
-    res.status(404).json({ error: 'Rota não encontrada' });
-  });
+  // Produção num serviço só: a API também entrega as telas compiladas (frontend/dist)
+  if (serveFrontend) {
+    const dist = path.resolve(process.env.FRONTEND_DIST ?? path.join(process.cwd(), '..', 'frontend', 'dist'));
+    if (!fs.existsSync(path.join(dist, 'index.html'))) {
+      throw new Error(`SERVE_FRONTEND=true, mas não encontrei ${dist}/index.html. Rode o build do frontend.`);
+    }
+    app.use(express.static(dist, { index: false, maxAge: '1h' }));
+    // Qualquer rota que não seja da API abre o app (inclusive /?acesso=... dos links de convite e de senha)
+    app.get(/^\/(?!api\/|api$).*/, (_req, res) => res.sendFile(path.join(dist, 'index.html')));
+  }
+
+  app.use((_req, _res, next) => next(new HttpError(404, 'Rota não encontrada')));
   app.use(errorHandler);
 
   return app;
