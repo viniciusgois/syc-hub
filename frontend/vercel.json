@@ -1,6 +1,11 @@
 {
   "redirects": [
     {
+      "source": "/",
+      "destination": "https://hub.saveyourcompany.com.br/",
+      "permanent": false
+    },
+    {
       "source": "/:path*",
       "destination": "https://hub.saveyourcompany.com.br/:path*",
       "permanent": false
