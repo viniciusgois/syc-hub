@@ -29,6 +29,7 @@ import { NiboImportSettings } from './components/settings/NiboImportSettings';
 import { AdvancedSettings } from './components/settings/AdvancedSettings';
 import { contactSectionFor } from './lib/contacts';
 import { CompaniesView } from './components/companies/CompaniesView';
+import { ContractStartBanner } from './components/companies/ContractStartBanner';
 import { EntriesView } from './components/entries/EntriesView';
 import { RecurrencesView } from './components/entries/RecurrencesView';
 import { entryRoute } from './lib/entries';
@@ -142,6 +143,9 @@ const MainLayout: React.FC = () => {
 
         {/* Sub-Header: Abas da Seção (Resumo | Contas & Extratos | Fluxo de caixa) */}
         {!companiesPage && <SubHeader />}
+
+        {/* Lembrete: data de início do contrato ainda não cadastrada */}
+        {!companiesPage && <ContractStartBanner />}
 
         {/* Papéis de leitura: o sistema mostra tudo, mas as ações de gravação são recusadas */}
         {!companiesPage && !can('FINANCIAL_OPERATOR') && (
