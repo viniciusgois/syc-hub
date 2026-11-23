@@ -6,6 +6,7 @@ import { accountDetails, accountInstitution } from '../../lib/accounts';
 import { api, errorMessage } from '../../lib/api';
 import { ENTRY_CONFIG, money, todayIso } from '../../lib/entries';
 import { EntryDrawer } from '../entries/EntryDrawer';
+import { StatementLineDialog } from './StatementLineDialog';
 import { ReconciliationView } from '../reconciliation/ReconciliationView';
 import { AccountBadge } from './AccountBadge';
 import { EditAccountModal } from './EditAccountModal';
@@ -66,6 +67,7 @@ export const AccountsAndStatements: React.FC<AccountsAndStatementsProps> = ({ on
   const [error, setError] = useState<string | null>(null);
   const [newEntry, setNewEntry] = useState<Direction | null>(null);
   const [openEntry, setOpenEntry] = useState<{ direction: Direction; id: string } | null>(null);
+  const [openLine, setOpenLine] = useState<string | null>(null);
   const [transferOpen, setTransferOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [undoing, setUndoing] = useState<string | null>(null);
@@ -372,9 +374,14 @@ export const AccountsAndStatements: React.FC<AccountsAndStatementsProps> = ({ on
                           {r.description}
                         </button>
                       ) : (
-                        <span className="block max-w-[320px] truncate" title={r.bankDescription}>
+                        <button
+                          type="button"
+                          onClick={() => setOpenLine(r.id)}
+                          className="block max-w-[320px] truncate text-left text-nibo-blue hover:underline"
+                          title={r.bankDescription}
+                        >
                           {r.description}
-                        </span>
+                        </button>
                       )}
                     </td>
                     <td className="px-3 py-2.5">
@@ -423,6 +430,7 @@ export const AccountsAndStatements: React.FC<AccountsAndStatementsProps> = ({ on
       {openEntry && (
         <EntryDrawer config={ENTRY_CONFIG[openEntry.direction]} mode="edit" entryId={openEntry.id} isOpen onClose={() => setOpenEntry(null)} onChanged={() => refreshLedger()} />
       )}
+      {openLine && <StatementLineDialog transactionId={openLine} onClose={() => setOpenLine(null)} />}
       {transferOpen && <TransferModal defaultFromId={account.id} onClose={() => setTransferOpen(false)} onDone={() => undefined} />}
       {editing && <EditAccountModal account={account} onClose={() => setEditing(false)} />}
     </div>

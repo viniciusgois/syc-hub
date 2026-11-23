@@ -193,8 +193,21 @@ transactionsRouter.get('/', async (req, res) => {
   });
 });
 
+/** Uma linha do extrato, com o rateio e (na transferência) a conta do outro lado */
 transactionsRouter.get('/:id', async (req, res) => {
-  res.json(await findOwned(companyIdOf(req), idParam(req)));
+  const companyId = companyIdOf(req);
+  const tx = await prisma.transaction.findFirst({
+    where: { id: idParam(req), companyId },
+    include: {
+      bankAccount: { select: { id: true, name: true } },
+      splits: { orderBy: { orderIndex: 'asc' }, select: { categoryId: true, costCenterId: true, amount: true } },
+    },
+  });
+  if (!tx) throw notFound('Transação');
+  const counterpart = tx.transferCounterpartId
+    ? await prisma.transaction.findFirst({ where: { id: tx.transferCounterpartId, companyId }, select: { bankAccount: { select: { id: true, name: true } } } })
+    : null;
+  res.json({ ...tx, transferAccount: counterpart?.bankAccount ?? null });
 });
 
 /** Lançamento manual (caixa / espécie) */
