@@ -65,7 +65,10 @@ export const EntriesReportView: React.FC<{ config: EntriesReportConfig }> = ({ c
       const data = await api.get<{ rows: ReportRow[] }>(`/companies/${currentCompany.id}/reports/entries?${params}`);
       if (ticket === requestRef.current) setRows(data.rows);
     } catch (err) {
-      if (ticket === requestRef.current) setError(errorMessage(err));
+      if (ticket === requestRef.current) {
+        setError(errorMessage(err));
+        setRows([]); // não deixar na tela o resultado da busca anterior
+      }
     } finally {
       if (ticket === requestRef.current) setLoading(false);
     }

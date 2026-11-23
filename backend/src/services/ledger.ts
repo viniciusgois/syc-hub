@@ -215,8 +215,9 @@ async function settlementRows(where: Prisma.EntrySettlementWhereInput, ctx: Ledg
 export interface LedgerQuery {
   companyId: string;
   basis: Basis;
-  from: Date;
-  to: Date;
+  /** Sem data: sem limite naquele lado (todo o histórico) */
+  from?: Date;
+  to?: Date;
   /** Só no caixa: filtrar o realizado pela data do pagamento (padrão) ou pela competência */
   dateBy?: 'payment' | 'competence';
   costCenterId?: string;

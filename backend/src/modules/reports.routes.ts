@@ -75,8 +75,7 @@ reportsRouter.get('/entries', async (req, res) => {
   if (q.state === 'open') {
     rows = await openEntryRows(companyId, direction, q.from, to, q.dateBy === 'competence' ? 'competence' : 'due');
   } else {
-    if (!q.from || !to) throw new HttpError(400, 'Informe o período');
-    if (to.getTime() - q.from.getTime() > 400 * 86_400_000) throw new HttpError(400, 'Período máximo de 13 meses');
+    // Sem data inicial e/ou final: busca em todo o histórico (como em Contas a receber/a pagar)
     const flow = direction === 'RECEIVABLE' ? 'IN' : 'OUT';
     rows = (
       await ledgerRows({ companyId, basis: 'CASH', from: q.from, to, dateBy: q.dateBy === 'competence' ? 'competence' : 'payment', bankAccountId: q.bankAccountId })
