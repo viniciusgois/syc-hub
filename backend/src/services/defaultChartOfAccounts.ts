@@ -146,7 +146,12 @@ export const SYSTEM_KEYS: Record<string, string> = {
   'Multas pagas': 'PAYABLE_INTEREST',
   'Descontos obtidos': 'PAYABLE_DISCOUNT',
 };
-const keyOf = (name: string, system?: boolean) => (system ? (SYSTEM_KEYS[name] ?? null) : null);
+/** Categorias padrão das tarifas (não são "do sistema": só a sugestão quando o motivo da diferença é uma tarifa) */
+const FEE_KEYS: Record<string, string> = {
+  'Taxas de cartão e meios de pagamento': 'CARD_FEE',
+  'Tarifas bancárias': 'OTHER_FEES',
+};
+const keyOf = (name: string, system?: boolean) => (system ? (SYSTEM_KEYS[name] ?? null) : (FEE_KEYS[name] ?? null));
 
 /** Linhas do plano padrão para uma empresa (subgrupos com ids gerados para ligar as filhas) */
 export function defaultCategoriesFor(companyId: string): Prisma.CategoryCreateManyInput[] {

@@ -109,16 +109,16 @@ async function assertUniqueDocument(companyId: string, type: ContactTypeValue, d
 /** Em aberto / vencido por contato, somando contas a pagar e a receber pendentes */
 async function openBalances(companyId: string, contactIds?: string[]) {
   const where = { companyId, status: 'PENDING' as const, contactId: contactIds ? { in: contactIds } : { not: null } };
-  const select = { contactId: true, amount: true, interestFine: true, discount: true, settledAmount: true, dueDate: true } as const;
+  const select = { contactId: true, amount: true, interestFine: true, discount: true, cardFee: true, otherFees: true, settledAmount: true, dueDate: true } as const;
   const [receivables, payables] = await Promise.all([
     prisma.receivable.findMany({ where, select }),
     prisma.payable.findMany({ where, select }),
   ]);
   const today = startOfTodayUtc();
   const result = new Map<string, { open: Prisma.Decimal; overdue: Prisma.Decimal }>();
-  for (const e of [...receivables, ...payables]) {
+  for (const [e, direction] of [...receivables.map((r) => [r, 'RECEIVABLE'] as const), ...payables.map((p) => [p, 'PAYABLE'] as const)]) {
     if (!e.contactId) continue;
-    const open = openAmount(e);
+    const open = openAmount(e, direction);
     const entry = result.get(e.contactId) ?? { open: new Prisma.Decimal(0), overdue: new Prisma.Decimal(0) };
     entry.open = entry.open.plus(open);
     if (e.dueDate < today) entry.overdue = entry.overdue.plus(open);
@@ -210,8 +210,8 @@ contactsRouter.get('/:id', async (req, res) => {
   ]);
 
   const upcoming = [
-    ...receivables.map((r) => ({ id: r.id, kind: 'RECEIVABLE' as const, description: displayDescription(r), documentNumber: r.documentNumber, dueDate: r.dueDate, amount: openAmount(r) })),
-    ...payables.map((p) => ({ id: p.id, kind: 'PAYABLE' as const, description: displayDescription(p), documentNumber: p.documentNumber, dueDate: p.dueDate, amount: openAmount(p) })),
+    ...receivables.map((r) => ({ id: r.id, kind: 'RECEIVABLE' as const, description: displayDescription(r), documentNumber: r.documentNumber, dueDate: r.dueDate, amount: openAmount(r, 'RECEIVABLE') })),
+    ...payables.map((p) => ({ id: p.id, kind: 'PAYABLE' as const, description: displayDescription(p), documentNumber: p.documentNumber, dueDate: p.dueDate, amount: openAmount(p, 'PAYABLE') })),
   ]
     .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime())
     .slice(0, 10);

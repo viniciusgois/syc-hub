@@ -4,14 +4,15 @@ import { useCompany } from '../../context/CompanyContext';
 import { api, errorMessage } from '../../lib/api';
 import { brDate, money } from '../../lib/entries';
 import { MatchSuggestion, Transaction } from '../../types';
-import { DifferenceChoice, DifferenceMode } from './DifferenceChoice';
+import { DifferenceChoice } from './DifferenceChoice';
+import { DifferenceChoiceValue, differenceNeedsCategory, resolveDifference } from '../../lib/difference';
 
 /**
  * Concilia uma linha do extrato com uma ou mais contas a receber/pagar em aberto.
  * Abre com a sugestão (se houver) já marcada.
  */
 export const ReconcileDialog: React.FC<{ tx: Transaction; onClose: () => void }> = ({ tx, onClose }) => {
-  const { currentCompany, matchTransaction } = useCompany();
+  const { currentCompany, categories, matchTransaction } = useCompany();
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
   const [candidates, setCandidates] = useState<MatchSuggestion[] | null>(null);
@@ -19,7 +20,7 @@ export const ReconcileDialog: React.FC<{ tx: Transaction; onClose: () => void }>
   const [picked, setPicked] = useState<Record<string, MatchSuggestion>>(() =>
     tx.matchSuggestion ? { [tx.matchSuggestion.id]: tx.matchSuggestion } : {},
   );
-  const [mode, setMode] = useState<DifferenceMode>('ADJUST');
+  const [choice, setChoice] = useState<DifferenceChoiceValue>('');
   const [diffCategory, setDiffCategory] = useState('');
   const [saving, setSaving] = useState(false);
   const isCredit = tx.type === 'CREDIT';
@@ -64,11 +65,13 @@ export const ReconcileDialog: React.FC<{ tx: Transaction; onClose: () => void }>
 
   const confirm = async () => {
     setSaving(true);
+    const { mode, reason } = resolveDifference(choice, isCredit, tx.amount, openTotal);
     const ok = await matchTransaction(
       tx.id,
       selected.map((c) => ({ direction: c.direction, id: c.id })),
-      diff < 0 ? mode : 'ADJUST',
+      Math.abs(diff) < 0.005 ? 'ADJUST' : mode,
       diffCategory || null,
+      Math.abs(diff) < 0.005 ? null : reason,
     );
     setSaving(false);
     if (ok) onClose();
@@ -166,7 +169,7 @@ export const ReconcileDialog: React.FC<{ tx: Transaction; onClose: () => void }>
 
         <div className="px-6 py-4 border-t border-slate-200 space-y-3">
           {selected.length > 0 && (
-            <DifferenceChoice statementAmount={tx.amount} openTotal={openTotal} mode={mode} onChange={setMode} verb={noun} category={diffCategory} onCategoryChange={setDiffCategory} />
+            <DifferenceChoice statementAmount={tx.amount} openTotal={openTotal} choice={choice} onChange={setChoice} verb={noun} category={diffCategory} onCategoryChange={setDiffCategory} />
           )}
           <div className="flex items-center justify-between gap-4">
             <p className="text-sm text-slate-600">
@@ -180,7 +183,7 @@ export const ReconcileDialog: React.FC<{ tx: Transaction; onClose: () => void }>
               <button
                 type="button"
                 onClick={confirm}
-                disabled={!selected.length || saving}
+                disabled={!selected.length || saving || (Math.abs(diff) >= 0.005 && openTotal > 0 && differenceNeedsCategory(categories, resolveDifference(choice, isCredit, tx.amount, openTotal).reason, diffCategory))}
                 className="px-5 h-10 rounded bg-nibo-blue hover:bg-nibo-blueHover text-white text-sm font-medium flex items-center gap-2 disabled:opacity-50"
               >
                 {saving && <Loader2 className="w-4 h-4 animate-spin" />}

@@ -149,17 +149,17 @@ reportsRouter.get('/alerts', async (req, res) => {
     status: 'PENDING' as const,
     OR: [{ expectedDate: { lt: today } }, { expectedDate: null, dueDate: { lt: today } }],
   };
-  const select = { amount: true, interestFine: true, discount: true, settledAmount: true } as const;
+  const select = { amount: true, interestFine: true, discount: true, cardFee: true, otherFees: true, settledAmount: true } as const;
   const [receivables, payables, unreconciled] = await Promise.all([
     prisma.receivable.findMany({ where: overdueWhere, select }),
     prisma.payable.findMany({ where: overdueWhere, select }),
     prisma.transaction.count({ where: { companyId, reconciliationStatus: { in: ['PENDING', 'SUGGESTED'] } } }),
   ]);
-  const sum = (rows: typeof receivables) => rows.reduce((s, e) => s.plus(openAmount(e)), new Prisma.Decimal(0));
-  const openRec = receivables.filter((e) => openAmount(e).gt(0));
-  const openPay = payables.filter((e) => openAmount(e).gt(0));
+  const sum = (rows: typeof receivables, direction: 'RECEIVABLE' | 'PAYABLE') => rows.reduce((s, e) => s.plus(openAmount(e, direction)), new Prisma.Decimal(0));
+  const openRec = receivables.filter((e) => openAmount(e, 'RECEIVABLE').gt(0));
+  const openPay = payables.filter((e) => openAmount(e, 'PAYABLE').gt(0));
   res.json({
-    overdue: { count: openRec.length + openPay.length, receivable: sum(openRec), payable: sum(openPay) },
+    overdue: { count: openRec.length + openPay.length, receivable: sum(openRec, 'RECEIVABLE'), payable: sum(openPay, 'PAYABLE') },
     unreconciledTransactions: unreconciled,
   });
 });

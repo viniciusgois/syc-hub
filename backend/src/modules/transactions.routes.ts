@@ -330,6 +330,8 @@ const matchSchema = z.object({
   entries: z.array(z.object({ direction: z.enum(['RECEIVABLE', 'PAYABLE']), id: z.uuid() })).min(1, 'Selecione ao menos um lançamento').max(100),
   mode: z.enum(['ADJUST', 'PARTIAL']).default('ADJUST'),
   differenceCategoryId: z.uuid().nullish(), // categoria da diferença (desconto/taxa ou juros)
+  // Motivo da diferença: juros/multa, desconto, tarifa de cartão ou demais tarifas (o servidor confere se combina com o caso)
+  differenceReason: z.enum(['INTEREST', 'DISCOUNT', 'CARD_FEE', 'OTHER_FEES']).nullish(),
 });
 
 /**
@@ -345,7 +347,7 @@ transactionsRouter.post('/:id/match', currentUser, async (req, res) => {
   if (await prisma.entrySettlement.count({ where: { transactionId: tx.id } })) {
     throw new HttpError(409, 'Esta linha já está conciliada com contas; desfaça a conciliação para refazer');
   }
-  const { entries: refs, mode, differenceCategoryId } = matchSchema.parse(req.body);
+  const { entries: refs, mode, differenceCategoryId, differenceReason } = matchSchema.parse(req.body);
   if (differenceCategoryId) {
     const c = await prisma.category.findFirst({ where: { id: differenceCategoryId, companyId, isGroup: false, section: { not: null } } });
     if (!c) throw new HttpError(400, 'Categoria da diferença inválida');
@@ -361,7 +363,7 @@ transactionsRouter.post('/:id/match', currentUser, async (req, res) => {
   items.sort((a, b) => a.entry.dueDate.getTime() - b.entry.dueDate.getTime());
 
   const result = await prisma.$transaction(async (db) => {
-    const matched = await matchTransaction(db, tx, items, mode, userIdOf(res), differenceCategoryId);
+    const matched = await matchTransaction(db, tx, items, mode, userIdOf(res), differenceCategoryId, differenceReason);
     await recalculateBalance(db, tx.bankAccountId);
     return matched;
   });

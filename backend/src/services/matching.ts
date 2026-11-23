@@ -30,7 +30,7 @@ export interface EntryCandidate {
 }
 
 const toCandidate = (direction: EntryDirection, e: Entry & { contact: { name: string } | null; category: { name: string } | null }, amount: Prisma.Decimal.Value, date: Date): EntryCandidate => {
-  const open = openAmount(e);
+  const open = openAmount(e, direction);
   return {
     direction,
     id: e.id,
@@ -61,7 +61,7 @@ async function openEntriesNear(companyId: string, direction: EntryDirection, fro
     include: { contact: { select: { name: true } }, category: { select: { name: true } } },
     take: 500,
   });
-  return rows.filter((e) => openAmount(e).gt(0));
+  return rows.filter((e) => openAmount(e, direction).gt(0));
 }
 
 /**
@@ -87,7 +87,7 @@ export async function suggestEntryMatches(
   for (const line of [...lines].sort((a, b) => a.date.getTime() - b.date.getTime())) {
     const direction = directionFor(line.type);
     const best = pool[direction]
-      .filter((e) => !used.has(e.id) && openAmount(e).eq(line.amount))
+      .filter((e) => !used.has(e.id) && openAmount(e, direction).eq(line.amount))
       .map((e) => ({ e, dist: daysApart(e, line.date) }))
       .filter((c) => c.dist <= MATCH_TOLERANCE_DAYS)
       .sort((a, b) => a.dist - b.dist)[0];
@@ -116,7 +116,7 @@ export async function entryCandidates(
 
 /** Linhas do extrato ainda não conciliadas com contas que podem ser este lançamento ("buscar no extrato") */
 export async function statementCandidates(companyId: string, direction: EntryDirection, entry: Entry, search?: string) {
-  const open = openAmount(entry);
+  const open = openAmount(entry, direction);
   const ref = entry.expectedDate ?? entry.dueDate;
   const rows = await prisma.transaction.findMany({
     where: {

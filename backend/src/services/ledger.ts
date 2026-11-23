@@ -1,6 +1,6 @@
 import { Prisma, type EntryDirection } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
-import { displayDescription, openAmount, startOfTodayUtc, totalDue } from './entries.js';
+import { displayDescription, feeSign, openAmount, startOfTodayUtc, totalDue } from './entries.js';
 
 /**
  * Razão gerencial: decompõe o movimento da empresa em linhas (categoria, centro de custo, valor com sinal).
@@ -56,11 +56,13 @@ export interface LedgerContext {
   /** Rateio ativo: juros/multa e desconto vão para as categorias do sistema (senão, para a categoria do lançamento) */
   separate: boolean;
   system: Record<EntryDirection, { interest?: string; discount?: string }>;
+  /** Tarifas: sempre na própria categoria (despesa), com ou sem rateio */
+  fees: { cardFee?: string; otherFees?: string };
 }
 
 export async function ledgerContext(companyId: string): Promise<LedgerContext> {
   const company = await prisma.company.findUniqueOrThrow({ where: { id: companyId }, select: { splitsEnabled: true } });
-  const keys = Object.values(SYSTEM_CATEGORY).flatMap((v) => Object.values(v));
+  const keys = [...Object.values(SYSTEM_CATEGORY).flatMap((v) => Object.values(v)), 'CARD_FEE', 'OTHER_FEES'];
   const system = await prisma.category.findMany({ where: { companyId, systemKey: { in: keys } }, select: { id: true, systemKey: true } });
   const idOf = (key: string) => system.find((c) => c.systemKey === key)?.id;
   return {
@@ -69,6 +71,7 @@ export async function ledgerContext(companyId: string): Promise<LedgerContext> {
       RECEIVABLE: { interest: idOf(SYSTEM_CATEGORY.RECEIVABLE.interest), discount: idOf(SYSTEM_CATEGORY.RECEIVABLE.discount) },
       PAYABLE: { interest: idOf(SYSTEM_CATEGORY.PAYABLE.interest), discount: idOf(SYSTEM_CATEGORY.PAYABLE.discount) },
     },
+    fees: { cardFee: idOf('CARD_FEE'), otherFees: idOf('OTHER_FEES') },
   };
 }
 
@@ -84,12 +87,16 @@ const entrySelect = {
   amount: true,
   interestFine: true,
   discount: true,
+  cardFee: true,
+  otherFees: true,
   settledAmount: true,
   settledAt: true,
   categoryId: true,
   costCenterId: true,
   interestCategoryId: true,
   discountCategoryId: true,
+  cardFeeCategoryId: true,
+  otherFeesCategoryId: true,
   contactId: true,
   contact: { select: { name: true } },
   splits: { orderBy: { orderIndex: 'asc' }, select: { categoryId: true, costCenterId: true, amount: true } },
@@ -106,6 +113,12 @@ function entryComponents(e: EntryRecord, direction: EntryDirection, ctx: LedgerC
   const target = (explicit: string | null, system?: string) => explicit ?? (ctx.separate && system ? system : e.categoryId);
   if (D(e.interestFine).gt(0)) parts.push({ categoryId: target(e.interestCategoryId, ctx.system[direction].interest), costCenterId: e.costCenterId, value: D(e.interestFine) });
   if (D(e.discount).gt(0)) parts.push({ categoryId: target(e.discountCategoryId, ctx.system[direction].discount), costCenterId: e.costCenterId, value: D(e.discount).negated() });
+  // Tarifas: despesa na categoria escolhida, ou na padrão (com ou sem rateio); no recebimento reduzem, no pagamento somam
+  const fee = (value: Prisma.Decimal.Value, explicit: string | null, system?: string) => {
+    if (D(value).gt(0)) parts.push({ categoryId: explicit ?? system ?? e.categoryId, costCenterId: e.costCenterId, value: D(value).times(feeSign(direction)) });
+  };
+  fee(e.cardFee, e.cardFeeCategoryId, ctx.fees.cardFee);
+  fee(e.otherFees, e.otherFeesCategoryId, ctx.fees.otherFees);
   return parts.map((p) => ({ ...p, value: p.value.times(sign) }));
 }
 
@@ -196,7 +209,7 @@ async function settlementRows(where: Prisma.EntrySettlementWhereInput, ctx: Ledg
   });
   return links.flatMap((l) => {
     const [e, direction] = l.receivable ? [l.receivable, 'RECEIVABLE' as const] : [l.payable!, 'PAYABLE' as const];
-    const due = totalDue(e);
+    const due = totalDue(e, direction);
     if (due.isZero()) return [];
     const sign = direction === 'RECEIVABLE' ? 1 : -1;
     return entryRows(e, direction, ctx, D(l.amount).div(due), {
@@ -256,12 +269,12 @@ export async function ledgerRows(q: LedgerQuery, ctx?: LedgerContext): Promise<L
       entryRows(e, direction, context, D(1), {
         group: `e${e.id}`,
         date: e.issueDate,
-        groupTotal: totalDue(e).times(direction === 'RECEIVABLE' ? 1 : -1),
+        groupTotal: totalDue(e, direction).times(direction === 'RECEIVABLE' ? 1 : -1),
         realized: e.status === 'PAID',
         transactionId: null,
         paidAt: e.settledAt,
         bankAccountName: null,
-        isOverdue: e.status === 'PENDING' && openAmount(e).gt(0) && e.dueDate < today,
+        isOverdue: e.status === 'PENDING' && openAmount(e, direction).gt(0) && e.dueDate < today,
       });
     rows = [...receivables.flatMap((e) => full(e, 'RECEIVABLE')), ...payables.flatMap((e) => full(e, 'PAYABLE')), ...direct];
   }
@@ -283,8 +296,8 @@ export async function openEntryRows(companyId: string, direction: EntryDirection
   const today = startOfTodayUtc();
   const sign = direction === 'RECEIVABLE' ? 1 : -1;
   return list.flatMap((e) => {
-    const open = openAmount(e);
-    const due = totalDue(e);
+    const open = openAmount(e, direction);
+    const due = totalDue(e, direction);
     if (!open.gt(0) || due.isZero()) return [];
     return entryRows(e, direction, context, open.div(due), {
       group: `e${e.id}`,

@@ -26,7 +26,7 @@ async function openEntries(companyId: string, direction: EntryDirection, until: 
   });
   return rows
     .map((e) => {
-      const amount = openAmount(e);
+      const amount = openAmount(e, direction);
       return {
         id: e.id,
         direction,

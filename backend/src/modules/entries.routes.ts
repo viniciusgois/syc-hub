@@ -66,6 +66,8 @@ const entryFields = {
   amount: money.refine((v) => v > 0, 'Informe o valor'),
   interestFine: money.optional(),
   discount: money.optional(),
+  cardFee: money.optional(), // tarifa de cartão
+  otherFees: money.optional(), // demais tarifas
 };
 
 const createSchema = z
@@ -91,10 +93,15 @@ const createSchema = z
     if (v.recurrence?.type === 'INSTALLMENT' && !v.recurrence.occurrences) {
       ctx.addIssue({ code: 'custom', message: 'Informe a quantidade de parcelas', path: ['recurrence', 'occurrences'] });
     }
-    if ((v.discount ?? 0) > v.amount + (v.interestFine ?? 0)) {
-      ctx.addIssue({ code: 'custom', message: 'O desconto não pode ser maior que o valor', path: ['discount'] });
-    }
   });
+
+/** Desconto e tarifas não podem levar o total abaixo de zero */
+function assertNonNegativeTotal(v: { amount: Prisma.Decimal.Value; interestFine?: Prisma.Decimal.Value; discount?: Prisma.Decimal.Value; cardFee?: Prisma.Decimal.Value; otherFees?: Prisma.Decimal.Value }, direction: EntryDirection) {
+  const total = totalDue({ amount: v.amount, interestFine: v.interestFine ?? 0, discount: v.discount ?? 0, cardFee: v.cardFee ?? 0, otherFees: v.otherFees ?? 0 } as never, direction);
+  if (total.isNegative()) {
+    throw new HttpError(400, direction === 'RECEIVABLE' ? 'Desconto e tarifas não podem ser maiores que o valor' : 'O desconto não pode ser maior que o valor', { fields: ['discount'] });
+  }
+}
 
 const updateSchema = z.object({ ...entryFields, isStarred: z.boolean() }).partial();
 
@@ -129,13 +136,14 @@ const listInclude = {
 
 function serialize<T extends Parameters<typeof openAmount>[0] & { dueDate: Date; status: string; description: string; installmentNumber: number | null; installmentTotal: number | null }>(
   e: T,
+  direction: EntryDirection,
   today = startOfTodayUtc(),
 ) {
-  const open = openAmount(e);
+  const open = openAmount(e, direction);
   return {
     ...e,
     displayDescription: displayDescription(e),
-    total: totalDue(e),
+    total: totalDue(e, direction),
     openAmount: e.status === 'LOST' || e.status === 'CANCELLED' ? D(0) : open,
     isOverdue: e.status === 'PENDING' && open.gt(0) && e.dueDate < today,
   };
@@ -194,7 +202,7 @@ export function entriesRouter(direction: EntryDirection) {
 
     const today = startOfTodayUtc();
     const data = rows
-      .map((r) => serialize(r, today))
+      .map((r) => serialize(r, direction, today))
       .filter((r) => (q.min === undefined || r.openAmount.gte(q.min)) && (q.max === undefined || r.openAmount.lte(q.max)));
 
     res.json({
@@ -235,7 +243,7 @@ export function entriesRouter(direction: EntryDirection) {
         bankAccount: l.transaction.bankAccount,
       }))
       .sort((a, b) => a.date.getTime() - b.date.getTime());
-    res.json({ ...serialize(entry), settlements });
+    res.json({ ...serialize(entry, direction), settlements });
   });
 
   /** Cria: agendado, recorrente/parcelado ou "não agendado" (já baixado) */
@@ -257,6 +265,7 @@ export function entriesRouter(direction: EntryDirection) {
     if (line && line.type !== settlementType(direction)) {
       throw new HttpError(400, line.type === 'CREDIT' ? 'Uma entrada só pode virar um recebimento' : 'Uma saída só pode virar um pagamento');
     }
+    assertNonNegativeTotal(body, direction);
     const dueDate = body.dueDate ?? line?.date ?? (body.settlement as { date: Date }).date;
     const base = {
       companyId,
@@ -295,6 +304,8 @@ export function entriesRouter(direction: EntryDirection) {
               expectedDate: body.expectedDate ?? null,
               interestFine: body.interestFine ?? 0,
               discount: body.discount ?? 0,
+              cardFee: body.cardFee ?? 0,
+              otherFees: body.otherFees ?? 0,
             }),
             ...(body.scheduledAtBank && { scheduledAtBank: true }),
           }),
@@ -313,6 +324,8 @@ export function entriesRouter(direction: EntryDirection) {
           amount: body.amount,
           interestFine: body.interestFine ?? 0,
           discount: body.discount ?? 0,
+          cardFee: body.cardFee ?? 0,
+          otherFees: body.otherFees ?? 0,
           ...(body.scheduledAtBank && { scheduledAtBank: true }),
         },
       });
@@ -327,13 +340,13 @@ export function entriesRouter(direction: EntryDirection) {
 
       const { bankAccountId, date } = body.settlement as { bankAccountId: string; date: Date };
       await assertSettlementAccount(db, companyId, bankAccountId, date);
-      const settled = await settleEntry(db, direction, entry, { amount: totalDue(entry), date, bankAccountId, userId: userIdOf(res) });
+      const settled = await settleEntry(db, direction, entry, { amount: totalDue(entry, direction), date, bankAccountId, userId: userIdOf(res) });
       await recalculateBalance(db, bankAccountId);
       return { entry: settled, created: 1, recurrenceId: null };
     });
 
     if (result.recurrenceId) await extendRecurrences(companyId, direction);
-    res.status(201).json({ ...serialize(result.entry), created: result.created });
+    res.status(201).json({ ...serialize(result.entry, direction), created: result.created });
   });
 
   router.patch('/:id', async (req, res) => {
@@ -342,6 +355,16 @@ export function entriesRouter(direction: EntryDirection) {
     const { splits: splitsInput, ...data } = updateSchema.parse(req.body);
     await assertRefsBelongToCompany(companyId, { categoryId: data.categoryId, contactId: data.contactId, costCenterId: data.costCenterId });
     assertScheduleFlag(data.scheduledAtBank);
+    assertNonNegativeTotal(
+      {
+        amount: data.amount ?? current.amount,
+        interestFine: data.interestFine ?? current.interestFine,
+        discount: data.discount ?? current.discount,
+        cardFee: data.cardFee ?? current.cardFee,
+        otherFees: data.otherFees ?? current.otherFees,
+      },
+      direction,
+    );
 
     // Rateio: novo (lista), removido (null) ou mantido e reescalado se o valor mudou
     const amount = data.amount ?? current.amount;
@@ -379,7 +402,7 @@ export function entriesRouter(direction: EntryDirection) {
       }
       return recomputeEntry(db, direction, entry.id);
     });
-    res.json(serialize(updated));
+    res.json(serialize(updated, direction));
   });
 
   router.delete('/:id', async (req, res) => {
@@ -402,7 +425,7 @@ export function entriesRouter(direction: EntryDirection) {
         if (!entry) throw notFound(label.entry);
         const when = item.date ?? date ?? today;
         await assertSettlementAccount(db, companyId, bankAccountId, when);
-        const amount = item.amount !== undefined ? D(item.amount) : openAmount(entry);
+        const amount = item.amount !== undefined ? D(item.amount) : openAmount(entry, direction);
         settled.push(await settleEntry(db, direction, entry, { amount, date: when, bankAccountId, userId: userIdOf(res) }));
       }
       await recalculateBalance(db, bankAccountId);
@@ -439,7 +462,7 @@ export function entriesRouter(direction: EntryDirection) {
     const entry = await findOwned(companyIdOf(req), idParam(req));
     if (entry.status !== 'LOST' && entry.status !== 'CANCELLED') throw new HttpError(409, 'O lançamento não está marcado como perda');
     await entries(prisma, direction).update({ where: { id: entry.id }, data: { status: 'PENDING' } });
-    res.json(serialize(await prisma.$transaction((db) => recomputeEntry(db, direction, entry.id))));
+    res.json(serialize(await prisma.$transaction((db) => recomputeEntry(db, direction, entry.id)), direction));
   });
 
   /**
@@ -477,7 +500,7 @@ export function entriesRouter(direction: EntryDirection) {
       }
       return recomputeEntry(db, direction, entry.id);
     });
-    res.json(serialize(updated));
+    res.json(serialize(updated, direction));
   });
 
   /** Linhas do extrato que podem ser esta conta (para "buscar no extrato" a partir do lançamento) */

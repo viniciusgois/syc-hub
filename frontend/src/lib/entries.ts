@@ -17,6 +17,9 @@ export interface EntryRow {
   amount: number;
   interestFine: number;
   discount: number;
+  /** Tarifa de cartão e demais tarifas: no recebimento reduzem o total, no pagamento somam */
+  cardFee: number;
+  otherFees: number;
   settledAmount: number;
   settledAt: string | null;
   total: number;

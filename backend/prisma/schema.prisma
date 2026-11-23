@@ -347,6 +347,10 @@ model Category {
   discountOf   Receivable[]         @relation("ReceivableDiscountCategory")
   interestOfP  Payable[]            @relation("PayableInterestCategory")
   discountOfP  Payable[]            @relation("PayableDiscountCategory")
+  cardFeeOf    Receivable[]         @relation("ReceivableCardFeeCategory")
+  otherFeesOf  Receivable[]         @relation("ReceivableOtherFeesCategory")
+  cardFeeOfP   Payable[]            @relation("PayableCardFeeCategory")
+  otherFeesOfP Payable[]            @relation("PayableOtherFeesCategory")
 
   @@unique([companyId, systemKey])
   @@index([companyId, type])
@@ -549,44 +553,50 @@ model ReconciliationRule {
 // ----------------------------------------------------------------------------
 
 model Payable {
-  id                 String        @id @default(uuid())
-  companyId          String
-  bankAccountId      String? // Conta da última baixa
-  categoryId         String?
-  costCenterId       String?
-  contactId          String? // Fornecedor / funcionário / sócio
-  recurrenceId       String? // Recorrência/parcelamento que gerou o lançamento
-  installmentNumber  Int? // Nº da parcela/ocorrência (ex.: 2 de "2/12")
-  installmentTotal   Int? // Total de parcelas (null = recorrência sem fim)
-  description        String
-  documentNumber     String? // Referência: Nº do boleto / NF-e
-  dueDate            DateTime // Vencimento (agendamento)
-  issueDate          DateTime      @default(now()) // Competência (DRE por competência)
-  expectedDate       DateTime? // Previsto para
-  amount             Decimal       @db.Decimal(15, 2) // Valor original
-  interestFine       Decimal       @default(0.00) @db.Decimal(15, 2) // Juros/multa
-  discount           Decimal       @default(0.00) @db.Decimal(15, 2)
-  interestCategoryId String? // Categoria dos juros/multa (padrão: categoria do sistema, com rateio ativo)
-  discountCategoryId String? // Categoria do desconto (ex.: "Taxas de cartão" na diferença da maquininha)
-  settledAmount      Decimal       @default(0.00) @db.Decimal(15, 2) // Total já baixado
-  settledAt          DateTime? // Data da última baixa
-  status             PaymentStatus @default(PENDING)
-  isStarred          Boolean       @default(false)
-  scheduledAtBank    Boolean       @default(false) // Pagamento já programado no banco
-  notes              String? // Detalhamento
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
+  id                  String        @id @default(uuid())
+  companyId           String
+  bankAccountId       String? // Conta da última baixa
+  categoryId          String?
+  costCenterId        String?
+  contactId           String? // Fornecedor / funcionário / sócio
+  recurrenceId        String? // Recorrência/parcelamento que gerou o lançamento
+  installmentNumber   Int? // Nº da parcela/ocorrência (ex.: 2 de "2/12")
+  installmentTotal    Int? // Total de parcelas (null = recorrência sem fim)
+  description         String
+  documentNumber      String? // Referência: Nº do boleto / NF-e
+  dueDate             DateTime // Vencimento (agendamento)
+  issueDate           DateTime      @default(now()) // Competência (DRE por competência)
+  expectedDate        DateTime? // Previsto para
+  amount              Decimal       @db.Decimal(15, 2) // Valor original
+  interestFine        Decimal       @default(0.00) @db.Decimal(15, 2) // Juros/multa
+  discount            Decimal       @default(0.00) @db.Decimal(15, 2)
+  interestCategoryId  String? // Categoria dos juros/multa (padrão: categoria do sistema, com rateio ativo)
+  discountCategoryId  String? // Categoria do desconto (ex.: "Taxas de cartão" na diferença da maquininha)
+  cardFee             Decimal       @default(0.00) @db.Decimal(15, 2) // Tarifa de cartão (maquininha/operadora)
+  otherFees           Decimal       @default(0.00) @db.Decimal(15, 2) // Demais tarifas (boleto, TED, banco...)
+  cardFeeCategoryId   String? // Categoria da tarifa de cartão (padrão: a categoria com systemKey CARD_FEE)
+  otherFeesCategoryId String? // Categoria das demais tarifas (padrão: systemKey OTHER_FEES)
+  settledAmount       Decimal       @default(0.00) @db.Decimal(15, 2) // Total já baixado
+  settledAt           DateTime? // Data da última baixa
+  status              PaymentStatus @default(PENDING)
+  isStarred           Boolean       @default(false)
+  scheduledAtBank     Boolean       @default(false) // Pagamento já programado no banco
+  notes               String? // Detalhamento
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
 
-  company          Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  bankAccount      BankAccount?      @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
-  category         Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  costCenter       CostCenter?       @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
-  contact          Contact?          @relation(fields: [contactId], references: [id], onDelete: SetNull)
-  recurrence       Recurrence?       @relation(fields: [recurrenceId], references: [id], onDelete: SetNull)
-  interestCategory Category?         @relation("PayableInterestCategory", fields: [interestCategoryId], references: [id], onDelete: SetNull)
-  discountCategory Category?         @relation("PayableDiscountCategory", fields: [discountCategoryId], references: [id], onDelete: SetNull)
-  settlements      EntrySettlement[]
-  splits           EntrySplit[]
+  company           Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  bankAccount       BankAccount?      @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
+  category          Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  costCenter        CostCenter?       @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
+  contact           Contact?          @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  recurrence        Recurrence?       @relation(fields: [recurrenceId], references: [id], onDelete: SetNull)
+  interestCategory  Category?         @relation("PayableInterestCategory", fields: [interestCategoryId], references: [id], onDelete: SetNull)
+  discountCategory  Category?         @relation("PayableDiscountCategory", fields: [discountCategoryId], references: [id], onDelete: SetNull)
+  cardFeeCategory   Category?         @relation("PayableCardFeeCategory", fields: [cardFeeCategoryId], references: [id], onDelete: SetNull)
+  otherFeesCategory Category?         @relation("PayableOtherFeesCategory", fields: [otherFeesCategoryId], references: [id], onDelete: SetNull)
+  settlements       EntrySettlement[]
+  splits            EntrySplit[]
 
   @@index([companyId, dueDate])
   @@index([companyId, status])
@@ -599,43 +609,49 @@ model Payable {
 // ----------------------------------------------------------------------------
 
 model Receivable {
-  id                 String        @id @default(uuid())
-  companyId          String
-  bankAccountId      String? // Conta da última baixa
-  categoryId         String?
-  costCenterId       String?
-  contactId          String? // Cliente
-  recurrenceId       String? // Recorrência/parcelamento que gerou o lançamento
-  installmentNumber  Int? // Nº da parcela/ocorrência (ex.: 2 de "2/12")
-  installmentTotal   Int? // Total de parcelas (null = recorrência sem fim)
-  description        String
-  documentNumber     String? // Referência: Nº da NF / contrato / duplicata
-  dueDate            DateTime // Vencimento (agendamento)
-  issueDate          DateTime      @default(now()) // Competência (DRE por competência)
-  expectedDate       DateTime? // Previsto para
-  amount             Decimal       @db.Decimal(15, 2) // Valor original
-  interestFine       Decimal       @default(0.00) @db.Decimal(15, 2) // Juros/multa
-  discount           Decimal       @default(0.00) @db.Decimal(15, 2)
-  interestCategoryId String? // Categoria dos juros/multa (padrão: categoria do sistema, com rateio ativo)
-  discountCategoryId String? // Categoria do desconto (ex.: "Taxas de cartão" na diferença da maquininha)
-  settledAmount      Decimal       @default(0.00) @db.Decimal(15, 2) // Total já baixado
-  settledAt          DateTime? // Data da última baixa
-  status             PaymentStatus @default(PENDING)
-  isStarred          Boolean       @default(false)
-  notes              String? // Detalhamento
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
+  id                  String        @id @default(uuid())
+  companyId           String
+  bankAccountId       String? // Conta da última baixa
+  categoryId          String?
+  costCenterId        String?
+  contactId           String? // Cliente
+  recurrenceId        String? // Recorrência/parcelamento que gerou o lançamento
+  installmentNumber   Int? // Nº da parcela/ocorrência (ex.: 2 de "2/12")
+  installmentTotal    Int? // Total de parcelas (null = recorrência sem fim)
+  description         String
+  documentNumber      String? // Referência: Nº da NF / contrato / duplicata
+  dueDate             DateTime // Vencimento (agendamento)
+  issueDate           DateTime      @default(now()) // Competência (DRE por competência)
+  expectedDate        DateTime? // Previsto para
+  amount              Decimal       @db.Decimal(15, 2) // Valor original
+  interestFine        Decimal       @default(0.00) @db.Decimal(15, 2) // Juros/multa
+  discount            Decimal       @default(0.00) @db.Decimal(15, 2)
+  interestCategoryId  String? // Categoria dos juros/multa (padrão: categoria do sistema, com rateio ativo)
+  discountCategoryId  String? // Categoria do desconto (ex.: "Taxas de cartão" na diferença da maquininha)
+  cardFee             Decimal       @default(0.00) @db.Decimal(15, 2) // Tarifa de cartão (maquininha/operadora)
+  otherFees           Decimal       @default(0.00) @db.Decimal(15, 2) // Demais tarifas (boleto, TED, banco...)
+  cardFeeCategoryId   String? // Categoria da tarifa de cartão (padrão: a categoria com systemKey CARD_FEE)
+  otherFeesCategoryId String? // Categoria das demais tarifas (padrão: systemKey OTHER_FEES)
+  settledAmount       Decimal       @default(0.00) @db.Decimal(15, 2) // Total já baixado
+  settledAt           DateTime? // Data da última baixa
+  status              PaymentStatus @default(PENDING)
+  isStarred           Boolean       @default(false)
+  notes               String? // Detalhamento
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
 
-  company          Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  bankAccount      BankAccount?      @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
-  category         Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  costCenter       CostCenter?       @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
-  contact          Contact?          @relation(fields: [contactId], references: [id], onDelete: SetNull)
-  recurrence       Recurrence?       @relation(fields: [recurrenceId], references: [id], onDelete: SetNull)
-  interestCategory Category?         @relation("ReceivableInterestCategory", fields: [interestCategoryId], references: [id], onDelete: SetNull)
-  discountCategory Category?         @relation("ReceivableDiscountCategory", fields: [discountCategoryId], references: [id], onDelete: SetNull)
-  settlements      EntrySettlement[]
-  splits           EntrySplit[]
+  company           Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  bankAccount       BankAccount?      @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
+  category          Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  costCenter        CostCenter?       @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
+  contact           Contact?          @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  recurrence        Recurrence?       @relation(fields: [recurrenceId], references: [id], onDelete: SetNull)
+  interestCategory  Category?         @relation("ReceivableInterestCategory", fields: [interestCategoryId], references: [id], onDelete: SetNull)
+  discountCategory  Category?         @relation("ReceivableDiscountCategory", fields: [discountCategoryId], references: [id], onDelete: SetNull)
+  cardFeeCategory   Category?         @relation("ReceivableCardFeeCategory", fields: [cardFeeCategoryId], references: [id], onDelete: SetNull)
+  otherFeesCategory Category?         @relation("ReceivableOtherFeesCategory", fields: [otherFeesCategoryId], references: [id], onDelete: SetNull)
+  settlements       EntrySettlement[]
+  splits            EntrySplit[]
 
   @@index([companyId, dueDate])
   @@index([companyId, status])

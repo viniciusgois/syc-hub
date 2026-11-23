@@ -91,6 +91,8 @@ interface CompanyContextType {
     entries: { direction: 'RECEIVABLE' | 'PAYABLE'; id: string }[],
     mode?: 'ADJUST' | 'PARTIAL',
     differenceCategoryId?: string | null,
+    /** Motivo da diferença: juros/multa, desconto, tarifa de cartão ou demais tarifas */
+    differenceReason?: 'INTEREST' | 'DISCOUNT' | 'CARD_FEE' | 'OTHER_FEES' | null,
   ) => Promise<boolean>;
   batchReconcile: (txIds: string[]) => Promise<void>;
   previewImport: (req: ImportRequest) => Promise<ImportResult>;
@@ -333,9 +335,15 @@ export const CompanyProvider: React.FC<{ children: React.ReactNode }> = ({ child
   );
 
   const matchTransaction = useCallback(
-    async (txId: string, entries: { direction: 'RECEIVABLE' | 'PAYABLE'; id: string }[], mode: 'ADJUST' | 'PARTIAL' = 'ADJUST', differenceCategoryId?: string | null) => {
+    async (
+      txId: string,
+      entries: { direction: 'RECEIVABLE' | 'PAYABLE'; id: string }[],
+      mode: 'ADJUST' | 'PARTIAL' = 'ADJUST',
+      differenceCategoryId?: string | null,
+      differenceReason?: 'INTEREST' | 'DISCOUNT' | 'CARD_FEE' | 'OTHER_FEES' | null,
+    ) => {
       try {
-        await api.post(`${companyPath}/transactions/${txId}/match`, { entries, mode, differenceCategoryId });
+        await api.post(`${companyPath}/transactions/${txId}/match`, { entries, mode, differenceCategoryId, differenceReason });
         await reloadLedger();
         notify(entries.length > 1 ? `Linha conciliada com ${entries.length} lançamentos` : 'Linha conciliada com a conta');
         return true;

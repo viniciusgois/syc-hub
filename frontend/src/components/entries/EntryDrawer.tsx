@@ -38,6 +38,8 @@ interface FormState {
   detailed: boolean;
   interestFine: number;
   discount: number;
+  cardFee: number;
+  otherFees: number;
   recurring: boolean;
   recurrenceType: 'INSTALLMENT' | 'RECURRING';
   /** Parcelamento: EACH = cada parcela com o valor informado (padrão, como no Nibo); TOTAL = valor dividido */
@@ -77,6 +79,8 @@ const emptyForm = (): FormState => ({
   detailed: false,
   interestFine: 0,
   discount: 0,
+  cardFee: 0,
+  otherFees: 0,
   recurring: false,
   recurrenceType: 'INSTALLMENT',
   installmentMode: 'EACH',
@@ -100,9 +104,11 @@ const formFrom = (e: EntryDetail): FormState => ({
   costCenterId: e.costCenterId ?? '',
   notes: e.notes ?? '',
   amount: e.amount,
-  detailed: e.interestFine > 0 || e.discount > 0,
+  detailed: e.interestFine > 0 || e.discount > 0 || e.cardFee > 0 || e.otherFees > 0,
   interestFine: e.interestFine,
   discount: e.discount,
+  cardFee: e.cardFee ?? 0,
+  otherFees: e.otherFees ?? 0,
   isStarred: e.isStarred,
   scheduledAtBank: !!e.scheduledAtBank,
   split: e.splits.length ? draftFromSplits(e.splits, e.amount) : null,
@@ -250,7 +256,9 @@ export const EntryDrawer: React.FC<EntryDrawerProps> = ({ config, mode, entryId,
     if (errors[field]) setErrors((e) => ({ ...e, [field]: undefined }));
   };
 
-  const total = form.amount + (form.detailed ? form.interestFine - form.discount : 0);
+  // Tarifas: no recebimento reduzem o que entra; no pagamento somam ao que sai
+  const feeSign = config.direction === 'RECEIVABLE' ? -1 : 1;
+  const total = form.amount + (form.detailed ? form.interestFine - form.discount + feeSign * (form.cardFee + form.otherFees) : 0);
   const isInstallment = form.recurring && form.recurrenceType === 'INSTALLMENT';
   const isEdit = mode === 'edit';
   const locked = isEdit && !!entry && entry.settledAmount > 0; // valores ficam travados após baixa
@@ -270,7 +278,7 @@ export const EntryDrawer: React.FC<EntryDrawerProps> = ({ config, mode, entryId,
     if (!form.split && !form.categoryId) next.categoryId = 'Selecione uma categoria';
     if (currentSplitError) next.split = currentSplitError;
     if (form.amount <= 0) next.amount = 'Informe o valor';
-    if (form.detailed && form.discount > form.amount + form.interestFine) next.discount = 'Desconto maior que o valor';
+    if (form.detailed && total < 0) next.discount = config.direction === 'RECEIVABLE' ? 'Desconto e tarifas maiores que o valor' : 'Desconto maior que o valor';
     if (form.recurring && !form.endless && (form.occurrences < 2 || form.occurrences > 360)) next.occurrences = 'Entre 2 e 360';
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -288,6 +296,8 @@ export const EntryDrawer: React.FC<EntryDrawerProps> = ({ config, mode, entryId,
     amount: form.amount,
     interestFine: form.detailed ? form.interestFine : 0,
     discount: form.detailed ? form.discount : 0,
+    cardFee: form.detailed ? form.cardFee : 0,
+    otherFees: form.detailed ? form.otherFees : 0,
     ...(form.issueDate && { issueDate: form.issueDate }),
   });
 
@@ -615,17 +625,27 @@ export const EntryDrawer: React.FC<EntryDrawerProps> = ({ config, mode, entryId,
               {/* Opções */}
               <div className="space-y-3">
                 <Toggle checked={form.detailed} onChange={(v) => set('detailed', v)} label="Valores detalhados" disabled={locked}>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                     <Field label="Juros / multa" htmlFor="en-interest">
                       <MoneyInput id="en-interest" value={form.interestFine} onChange={(v) => set('interestFine', v)} allowNegative={false} />
                     </Field>
                     <Field label="Desconto" htmlFor="en-discount" error={errors.discount}>
                       <MoneyInput id="en-discount" value={form.discount} onChange={(v) => set('discount', v)} allowNegative={false} error={errors.discount} />
                     </Field>
-                    <div className="self-end text-sm text-slate-600 pb-2.5">
-                      Total: <strong className="text-slate-800">R$ {money(total)}</strong>
-                    </div>
+                    <Field label="Tarifa de cartão" htmlFor="en-card-fee">
+                      <MoneyInput id="en-card-fee" value={form.cardFee} onChange={(v) => set('cardFee', v)} allowNegative={false} />
+                    </Field>
+                    <Field label="Demais tarifas" htmlFor="en-other-fees">
+                      <MoneyInput id="en-other-fees" value={form.otherFees} onChange={(v) => set('otherFees', v)} allowNegative={false} />
+                    </Field>
                   </div>
+                  <p className="mt-3 text-sm text-slate-600">
+                    Total: <strong className="text-slate-800">R$ {money(total)}</strong>
+                    <span className="text-xs text-slate-500">
+                      {' '}
+                      = valor + juros/multa − desconto {config.direction === 'RECEIVABLE' ? '− tarifas' : '+ tarifas'}. As tarifas vão para a categoria de tarifas (despesa).
+                    </span>
+                  </p>
                 </Toggle>
 
                 {config.direction === 'PAYABLE' && currentCompany.bankScheduleEnabled && mode !== 'now' && entry?.status !== 'PAID' && (

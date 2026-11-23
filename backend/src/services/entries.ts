@@ -23,14 +23,24 @@ export const settlementRef = (direction: EntryDirection, id: string) => (directi
 
 export const settlementType = (direction: EntryDirection) => (direction === 'RECEIVABLE' ? 'CREDIT' : 'DEBIT');
 
-export type MoneyFields = Pick<Entry, 'amount' | 'interestFine' | 'discount' | 'settledAmount'>;
+export type MoneyFields = Pick<Entry, 'amount' | 'interestFine' | 'discount' | 'cardFee' | 'otherFees' | 'settledAmount'>;
 
-/** Total devido = valor + juros/multa − desconto */
-export const totalDue = (e: Omit<MoneyFields, 'settledAmount'>) => D(e.amount).plus(e.interestFine).minus(e.discount);
+/** Tarifas (cartão + demais): no recebimento reduzem o que entra; no pagamento aumentam o que sai. Sempre despesa. */
+export const feeSign = (direction: EntryDirection) => (direction === 'RECEIVABLE' ? -1 : 1);
+
+/**
+ * Total devido = valor + juros/multa − desconto ∓ tarifas
+ * (recebimento: − tarifa de cartão − demais tarifas; pagamento: + tarifas)
+ */
+export const totalDue = (e: Omit<MoneyFields, 'settledAmount'>, direction: EntryDirection) =>
+  D(e.amount)
+    .plus(e.interestFine)
+    .minus(e.discount)
+    .plus(D(e.cardFee).plus(e.otherFees).times(feeSign(direction)));
 
 /** Em aberto = total devido − já baixado (nunca negativo) */
-export function openAmount(e: MoneyFields) {
-  const open = totalDue(e).minus(e.settledAmount);
+export function openAmount(e: MoneyFields, direction: EntryDirection) {
+  const open = totalDue(e, direction).minus(e.settledAmount);
   return open.isNegative() ? D(0) : open;
 }
 
@@ -210,12 +220,30 @@ function assertSettleable(entry: Entry) {
 /** Como tratar a diferença quando a linha é MENOR que o total em aberto */
 export type DifferenceMode = 'ADJUST' | 'PARTIAL';
 
+/** Motivo da diferença entre o agendado e o que passou no banco (campo do lançamento que recebe o ajuste) */
+export type DifferenceReason = 'INTEREST' | 'DISCOUNT' | 'CARD_FEE' | 'OTHER_FEES';
+
+const REASON_FIELD = { INTEREST: 'interestFine', DISCOUNT: 'discount', CARD_FEE: 'cardFee', OTHER_FEES: 'otherFees' } as const;
+const REASON_CATEGORY = { INTEREST: 'interestCategoryId', DISCOUNT: 'discountCategoryId', CARD_FEE: 'cardFeeCategoryId', OTHER_FEES: 'otherFeesCategoryId' } as const;
+
+/**
+ * Motivos possíveis para cada caso (valor positivo do ajuste):
+ * - recebimento, banco MAIOR: juros/multa · banco MENOR: desconto, tarifa de cartão ou demais tarifas
+ * - pagamento,   banco MAIOR: juros/multa, tarifa de cartão ou demais tarifas · banco MENOR: desconto
+ */
+export function differenceReasonFor(direction: EntryDirection, excess: boolean, wanted?: DifferenceReason | null): DifferenceReason {
+  const allowed: DifferenceReason[] =
+    direction === 'RECEIVABLE' ? (excess ? ['INTEREST'] : ['DISCOUNT', 'CARD_FEE', 'OTHER_FEES']) : excess ? ['INTEREST', 'CARD_FEE', 'OTHER_FEES'] : ['DISCOUNT'];
+  return wanted && allowed.includes(wanted) ? wanted : allowed[0];
+}
+
 export interface Allocation {
   direction: EntryDirection;
   entry: Entry;
   amount: Prisma.Decimal; // parte da linha alocada ao lançamento
-  interestAdd: Prisma.Decimal;
-  discountAdd: Prisma.Decimal;
+  /** Ajuste para fechar a diferença (positivo) e o motivo */
+  adjust: Prisma.Decimal;
+  reason: DifferenceReason | null;
 }
 
 /**
@@ -224,16 +252,22 @@ export interface Allocation {
  * - total <  soma em aberto: ADJUST quita todos com desconto (a partir do último);
  *                            PARTIAL quita na ordem até o dinheiro acabar (o último pode ficar parcial)
  */
-export function allocate(items: { direction: EntryDirection; entry: Entry }[], total: Prisma.Decimal, mode: DifferenceMode): Allocation[] {
-  const opens = items.map((i) => openAmount(i.entry));
+export function allocate(
+  items: { direction: EntryDirection; entry: Entry }[],
+  total: Prisma.Decimal,
+  mode: DifferenceMode,
+  wantedReason?: DifferenceReason | null,
+): Allocation[] {
+  const opens = items.map((i) => openAmount(i.entry, i.direction));
   const sumOpen = opens.reduce((s, v) => s.plus(v), D(0));
-  const result: Allocation[] = items.map((i, idx) => ({ ...i, amount: opens[idx], interestAdd: D(0), discountAdd: D(0) }));
+  const result: Allocation[] = items.map((i, idx) => ({ ...i, amount: opens[idx], adjust: D(0), reason: null }));
 
   if (total.gte(sumOpen)) {
     const excess = total.minus(sumOpen);
     if (excess.gt(0)) {
       const last = result[result.length - 1];
-      last.interestAdd = excess;
+      last.adjust = excess;
+      last.reason = differenceReasonFor(last.direction, true, wantedReason);
       last.amount = last.amount.plus(excess);
     }
     return result;
@@ -243,7 +277,8 @@ export function allocate(items: { direction: EntryDirection; entry: Entry }[], t
     let shortfall = sumOpen.minus(total);
     for (let i = result.length - 1; i >= 0 && shortfall.gt(0); i--) {
       const d = Prisma.Decimal.min(shortfall, result[i].amount);
-      result[i].discountAdd = d;
+      result[i].adjust = d;
+      result[i].reason = differenceReasonFor(result[i].direction, false, wantedReason);
       result[i].amount = result[i].amount.minus(d);
       shortfall = shortfall.minus(d);
     }
@@ -263,14 +298,13 @@ export function allocate(items: { direction: EntryDirection; entry: Entry }[], t
  * `differenceCategoryId` classifica a diferença (ex.: "Taxas de cartão" no lugar de "Descontos concedidos").
  */
 export async function applyAllocation(db: Db, transactionId: string, a: Allocation, differenceCategoryId?: string | null) {
-  if (a.interestAdd.gt(0) || a.discountAdd.gt(0)) {
+  if (a.reason && a.adjust.gt(0)) {
+    const field = REASON_FIELD[a.reason];
     await entries(db, a.direction).update({
       where: { id: a.entry.id },
       data: {
-        interestFine: D(a.entry.interestFine).plus(a.interestAdd),
-        discount: D(a.entry.discount).plus(a.discountAdd),
-        ...(differenceCategoryId && a.interestAdd.gt(0) && { interestCategoryId: differenceCategoryId }),
-        ...(differenceCategoryId && a.discountAdd.gt(0) && { discountCategoryId: differenceCategoryId }),
+        [field]: D(a.entry[field]).plus(a.adjust),
+        ...(differenceCategoryId && { [REASON_CATEGORY[a.reason]]: differenceCategoryId }),
       },
     });
   }
@@ -293,6 +327,7 @@ export async function matchTransaction(
   mode: DifferenceMode,
   userId: string,
   differenceCategoryId?: string | null,
+  differenceReason?: DifferenceReason | null,
 ) {
   for (const i of items) {
     assertSettleable(i.entry);
@@ -300,7 +335,7 @@ export async function matchTransaction(
       throw new HttpError(400, tx.type === 'CREDIT' ? 'Uma entrada só pode conciliar contas a receber' : 'Uma saída só pode conciliar contas a pagar');
     }
   }
-  const allocations = allocate(items, D(tx.amount), mode);
+  const allocations = allocate(items, D(tx.amount), mode, differenceReason);
   for (const a of allocations) await applyAllocation(db, tx.id, a, differenceCategoryId);
   // Quem classifica a linha passa a ser o(s) lançamento(s); um rateio feito direto na linha deixa de valer
   await db.entrySplit.deleteMany({ where: { transactionId: tx.id } });
@@ -330,7 +365,7 @@ export async function recomputeEntry(db: Db, direction: EntryDirection, id: stri
   });
   const settledAmount = links.reduce((s, l) => s.plus(l.amount), D(0));
   const settledAt = links.reduce<Date | null>((max, l) => (!max || l.transaction.date > max ? l.transaction.date : max), null);
-  const remaining = openAmount({ ...entry, settledAmount });
+  const remaining = openAmount({ ...entry, settledAmount }, direction);
   const keepStatus = entry.status === 'LOST' || entry.status === 'CANCELLED';
   return entries(db, direction).update({
     where: { id },

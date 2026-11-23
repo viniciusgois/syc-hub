@@ -3,7 +3,8 @@ import { X, Search, Loader2 } from 'lucide-react';
 import { useCompany } from '../../context/CompanyContext';
 import { api, errorMessage } from '../../lib/api';
 import { ENTRY_CONFIG, EntryDirection, brDate, money } from '../../lib/entries';
-import { DifferenceChoice, DifferenceMode } from './DifferenceChoice';
+import { DifferenceChoice } from './DifferenceChoice';
+import { DifferenceChoiceValue, differenceNeedsCategory, resolveDifference } from '../../lib/difference';
 
 interface StatementCandidate {
   id: string;
@@ -23,14 +24,14 @@ export const StatementSearchDialog: React.FC<{
   onClose: () => void;
   onMatched: () => void;
 }> = ({ direction, entry, onClose, onMatched }) => {
-  const { currentCompany, matchTransaction } = useCompany();
+  const { currentCompany, categories, matchTransaction } = useCompany();
   const config = ENTRY_CONFIG[direction];
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
   const [rows, setRows] = useState<StatementCandidate[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<StatementCandidate | null>(null);
-  const [mode, setMode] = useState<DifferenceMode>('ADJUST');
+  const [choice, setChoice] = useState<DifferenceChoiceValue>('');
   const [diffCategory, setDiffCategory] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -57,7 +58,9 @@ export const StatementSearchDialog: React.FC<{
   const confirm = async () => {
     if (!picked) return;
     setSaving(true);
-    const ok = await matchTransaction(picked.id, [{ direction, id: entry.id }], picked.amount < entry.openAmount ? mode : 'ADJUST', diffCategory || null);
+    const same = Math.abs(picked.amount - entry.openAmount) < 0.005;
+    const { mode, reason } = resolveDifference(choice, direction === 'RECEIVABLE', picked.amount, entry.openAmount);
+    const ok = await matchTransaction(picked.id, [{ direction, id: entry.id }], same ? 'ADJUST' : mode, diffCategory || null, same ? null : reason);
     setSaving(false);
     if (ok) {
       onMatched();
@@ -142,7 +145,7 @@ export const StatementSearchDialog: React.FC<{
         </div>
 
         <div className="px-6 py-4 border-t border-slate-200 space-y-3">
-          {picked && <DifferenceChoice statementAmount={picked.amount} openTotal={entry.openAmount} mode={mode} onChange={setMode} verb={config.noun as 'recebimento' | 'pagamento'} category={diffCategory} onCategoryChange={setDiffCategory} />}
+          {picked && <DifferenceChoice statementAmount={picked.amount} openTotal={entry.openAmount} choice={choice} onChange={setChoice} verb={config.noun as 'recebimento' | 'pagamento'} category={diffCategory} onCategoryChange={setDiffCategory} />}
           <div className="flex items-center justify-end gap-5">
             <button type="button" onClick={onClose} className="text-sm text-nibo-blue hover:underline">
               Cancelar
@@ -150,7 +153,12 @@ export const StatementSearchDialog: React.FC<{
             <button
               type="button"
               onClick={confirm}
-              disabled={!picked || saving}
+              disabled={
+                !picked ||
+                saving ||
+                (Math.abs(picked.amount - entry.openAmount) >= 0.005 &&
+                  differenceNeedsCategory(categories, resolveDifference(choice, direction === 'RECEIVABLE', picked.amount, entry.openAmount).reason, diffCategory))
+              }
               className="px-5 h-10 rounded bg-nibo-blue hover:bg-nibo-blueHover text-white text-sm font-medium flex items-center gap-2 disabled:opacity-50"
             >
               {saving && <Loader2 className="w-4 h-4 animate-spin" />}
