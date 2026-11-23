@@ -107,6 +107,8 @@ export interface Category {
   /** Subgrupo (agrupa categorias dentro da seção) */
   isGroup: boolean;
   isSystem: boolean;
+  /** Papel fixo no sistema (ex.: PAYABLE_INTEREST recebe juros/multa dos pagamentos com rateio ativo) */
+  systemKey?: string | null;
   isActive: boolean;
   orderIndex: number;
   color?: string;

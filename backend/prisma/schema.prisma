@@ -326,7 +326,8 @@ model Category {
   section         DRESection? // Seção da DRE (null = fora da DRE, ex.: transferências entre contas)
   isGroup         Boolean      @default(false) // Subgrupo: agrupa categorias dentro da seção
   isDREApplicable Boolean      @default(true) // Falso para aportes, distribuição de lucros, transferências
-  isSystem        Boolean      @default(false) // Categorias de sistema protegidas
+  isSystem        Boolean      @default(false) // Veio do plano padrão como categoria do sistema (só informativo; pode ser editada)
+  systemKey       String? // Papel fixo no sistema (RECEIVABLE_INTEREST, PAYABLE_DISCOUNT, TRANSFER...): achada por aqui, não pelo nome
   color           String? // Cor de identificação
   orderIndex      Int          @default(0)
   isActive        Boolean      @default(true)
@@ -347,6 +348,7 @@ model Category {
   interestOfP  Payable[]            @relation("PayableInterestCategory")
   discountOfP  Payable[]            @relation("PayableDiscountCategory")
 
+  @@unique([companyId, systemKey])
   @@index([companyId, type])
   @@index([companyId, section])
   @@index([companyId, parentId])

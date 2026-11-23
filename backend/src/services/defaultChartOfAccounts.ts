@@ -136,6 +136,18 @@ export const DEFAULT_CHART: SectionChart[] = [
 /** Categoria de sistema fora da DRE (movimentação entre contas da própria empresa) */
 export const TRANSFER_CATEGORY_NAME = 'Transferência entre contas';
 
+/**
+ * Papel fixo de algumas categorias do plano padrão. O sistema acha essas categorias pela chave (não pelo nome),
+ * então o usuário pode renomear e mover à vontade. Com o rateio ativo, juros/multa e desconto vão para elas.
+ */
+export const SYSTEM_KEYS: Record<string, string> = {
+  'Multas recebidas': 'RECEIVABLE_INTEREST',
+  'Descontos concedidos': 'RECEIVABLE_DISCOUNT',
+  'Multas pagas': 'PAYABLE_INTEREST',
+  'Descontos obtidos': 'PAYABLE_DISCOUNT',
+};
+const keyOf = (name: string, system?: boolean) => (system ? (SYSTEM_KEYS[name] ?? null) : null);
+
 /** Linhas do plano padrão para uma empresa (subgrupos com ids gerados para ligar as filhas) */
 export function defaultCategoriesFor(companyId: string): Prisma.CategoryCreateManyInput[] {
   const rows: Prisma.CategoryCreateManyInput[] = [];
@@ -145,13 +157,13 @@ export function defaultCategoriesFor(companyId: string): Prisma.CategoryCreateMa
         const groupId = randomUUID();
         rows.push({ id: groupId, companyId, section, isGroup: true, name: entry.group, type: 'EXPENSE', orderIndex: i });
         entry.items.forEach((item, j) =>
-          rows.push({ companyId, section, parentId: groupId, name: item.name, type: item.type, isSystem: !!item.system, orderIndex: j }),
+          rows.push({ companyId, section, parentId: groupId, name: item.name, type: item.type, isSystem: !!item.system, systemKey: keyOf(item.name, item.system), orderIndex: j }),
         );
       } else {
-        rows.push({ companyId, section, name: entry.name, type: entry.type, isSystem: !!entry.system, orderIndex: i });
+        rows.push({ companyId, section, name: entry.name, type: entry.type, isSystem: !!entry.system, systemKey: keyOf(entry.name, entry.system), orderIndex: i });
       }
     });
   }
-  rows.push({ companyId, section: null, name: TRANSFER_CATEGORY_NAME, type: 'TRANSFER', isSystem: true, isDREApplicable: false, orderIndex: 0 });
+  rows.push({ companyId, section: null, name: TRANSFER_CATEGORY_NAME, type: 'TRANSFER', isSystem: true, systemKey: 'TRANSFER', isDREApplicable: false, orderIndex: 0 });
   return rows;
 }

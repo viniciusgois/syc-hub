@@ -46,10 +46,10 @@ export interface LedgerRow {
 // Composição de um lançamento: rateio (ou categoria única) + juros/multa − desconto
 // ----------------------------------------------------------------------------
 
-/** Categorias do sistema que recebem juros/multa e desconto quando o rateio está ativo */
+/** Categorias do sistema que recebem juros/multa e desconto quando o rateio está ativo (achadas pela chave, não pelo nome) */
 const SYSTEM_CATEGORY = {
-  RECEIVABLE: { interest: 'Multas recebidas', discount: 'Descontos concedidos' },
-  PAYABLE: { interest: 'Multas pagas', discount: 'Descontos obtidos' },
+  RECEIVABLE: { interest: 'RECEIVABLE_INTEREST', discount: 'RECEIVABLE_DISCOUNT' },
+  PAYABLE: { interest: 'PAYABLE_INTEREST', discount: 'PAYABLE_DISCOUNT' },
 } as const;
 
 export interface LedgerContext {
@@ -60,9 +60,9 @@ export interface LedgerContext {
 
 export async function ledgerContext(companyId: string): Promise<LedgerContext> {
   const company = await prisma.company.findUniqueOrThrow({ where: { id: companyId }, select: { splitsEnabled: true } });
-  const names = Object.values(SYSTEM_CATEGORY).flatMap((v) => Object.values(v));
-  const system = await prisma.category.findMany({ where: { companyId, isSystem: true, name: { in: names } }, select: { id: true, name: true } });
-  const idOf = (name: string) => system.find((c) => c.name === name)?.id;
+  const keys = Object.values(SYSTEM_CATEGORY).flatMap((v) => Object.values(v));
+  const system = await prisma.category.findMany({ where: { companyId, systemKey: { in: keys } }, select: { id: true, systemKey: true } });
+  const idOf = (key: string) => system.find((c) => c.systemKey === key)?.id;
   return {
     separate: company.splitsEnabled,
     system: {

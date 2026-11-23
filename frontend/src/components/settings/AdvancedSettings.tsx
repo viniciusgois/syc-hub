@@ -83,8 +83,8 @@ export const AdvancedSettings: React.FC = () => {
         <Card title="Rateio por categoria e centro de custo">
           <p>Divida um recebimento, pagamento ou linha do extrato entre várias categorias e centros de custo, por valor ou por percentual.</p>
           <p>
-            Juros/multa e descontos passam a aparecer separados na DRE, nas categorias do sistema: <em>Multas recebidas</em>, <em>Descontos concedidos</em>,{' '}
-            <em>Multas pagas</em> e <em>Descontos obtidos</em>.
+            Juros/multa e descontos passam a aparecer separados na DRE, nas categorias do sistema (no plano padrão: <em>Multas recebidas</em>,{' '}
+            <em>Descontos concedidos</em>, <em>Multas pagas</em> e <em>Descontos obtidos</em>; elas podem ser renomeadas e movidas).
           </p>
           <Switch
             checked={currentCompany.splitsEnabled}

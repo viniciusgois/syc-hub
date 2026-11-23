@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { ArrowUp, ArrowDown, Lock, Pencil, Trash2, Plus, ChevronDown, Download, GripVertical, Loader2 } from 'lucide-react';
+import { ArrowUp, ArrowDown, Info, Pencil, Trash2, Plus, ChevronDown, Download, GripVertical, Loader2 } from 'lucide-react';
 import { useCompany } from '../../context/CompanyContext';
 import { api, errorMessage } from '../../lib/api';
 import { SECTION_LABEL, SECTION_ORDER } from '../../lib/categories';
@@ -8,6 +8,14 @@ import { Category, DRESection } from '../../types';
 import { LinkButton, Modal, PrimaryButton, fieldClass } from '../common/Modal';
 
 type FormState = { id?: string; isGroup: boolean; name: string; type: 'INCOME' | 'EXPENSE'; section: DRESection; parentId: string };
+
+/** O que o sistema faz com as categorias que têm papel fixo (achadas pela chave, então podem ser renomeadas) */
+const SYSTEM_ROLE: Record<string, string> = {
+  RECEIVABLE_INTEREST: 'Com o rateio ativo, recebe os juros/multas dos recebimentos.',
+  RECEIVABLE_DISCOUNT: 'Com o rateio ativo, recebe os descontos dados nos recebimentos.',
+  PAYABLE_INTEREST: 'Com o rateio ativo, recebe os juros/multas dos pagamentos.',
+  PAYABLE_DISCOUNT: 'Com o rateio ativo, recebe os descontos obtidos nos pagamentos.',
+};
 
 export const CategoriesSettings: React.FC = () => {
   const { currentCompany, notify, reloadCategories } = useCompany();
@@ -201,13 +209,13 @@ export const CategoriesSettings: React.FC = () => {
             <ArrowDown className="w-4 h-4 text-rose-600 shrink-0" aria-label="Saída" />
           ))}
         <span className={`truncate ${c.isGroup ? 'font-medium text-slate-800' : 'text-slate-700'}`}>{c.name}</span>
-        {c.isSystem && (
-          <span title="Categoria do sistema (juros, multas, descontos): não pode ser alterada">
-            <Lock className="w-3.5 h-3.5 text-slate-300" />
+        {c.systemKey && SYSTEM_ROLE[c.systemKey] && (
+          <span title={`${SYSTEM_ROLE[c.systemKey]} Pode renomear, mover ou excluir.`}>
+            <Info className="w-3.5 h-3.5 text-slate-300" aria-label={SYSTEM_ROLE[c.systemKey]} />
           </span>
         )}
       </span>
-      {!c.isSystem && (
+      {c.systemKey !== 'TRANSFER' && (
         <span className="flex items-center gap-1 pr-3">
           <button onClick={() => openEdit(c)} aria-label={`Editar ${c.name}`} className="p-1.5 rounded text-nibo-blue hover:bg-nibo-blueLight">
             <Pencil className="w-4 h-4" />

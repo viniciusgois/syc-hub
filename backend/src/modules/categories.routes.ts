@@ -81,7 +81,6 @@ categoriesRouter.patch('/:id', async (req, res) => {
   const companyId = companyIdOf(req);
   const current = await findOwned(companyId, idParam(req));
   const data = updateSchema.parse(req.body);
-  if (current.isSystem) throw new HttpError(400, 'Categoria do sistema não pode ser alterada');
 
   const section = data.section ?? current.section;
   if (!section) throw new HttpError(400, 'Esta categoria não faz parte da DRE');
@@ -127,7 +126,8 @@ categoriesRouter.post('/reorder', async (req, res) => {
 
 /**
  * Excluir: subgrupo devolve as categorias para a raiz da seção; categoria em uso é arquivada
- * (some das listas mas mantém o histórico); categorias do sistema não podem ser excluídas.
+ * (some das listas mas mantém o histórico). As do plano padrão também podem ser editadas, movidas e excluídas; sem a
+ * de juros/multa ou desconto, esses valores voltam para a categoria do próprio lançamento.
  */
 categoriesRouter.delete('/:id', async (req, res) => {
   const companyId = companyIdOf(req);
@@ -136,7 +136,7 @@ categoriesRouter.delete('/:id', async (req, res) => {
     include: { _count: { select: { transactions: true, receivables: true, payables: true, rules: true, recurrences: true, splits: true } } },
   });
   if (!category) throw notFound('Categoria');
-  if (category.isSystem) throw new HttpError(400, 'Categoria do sistema não pode ser excluída');
+  if (category.systemKey === 'TRANSFER') throw new HttpError(400, 'A categoria de transferência entre contas não pode ser excluída');
 
   if (category.isGroup) {
     await prisma.$transaction(async (db) => {

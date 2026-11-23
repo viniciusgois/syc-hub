@@ -31,15 +31,10 @@ export const DifferenceChoice: React.FC<{
 
   const receiving = verb === 'recebimento';
   // Sem escolha: com rateio ativo vai para a categoria do sistema; senão, para a do próprio lançamento
-  const fallback = !currentCompany.splitsEnabled
-    ? 'a categoria do lançamento'
-    : diff > 0
-      ? receiving
-        ? 'Multas recebidas'
-        : 'Multas pagas'
-      : receiving
-        ? 'Descontos concedidos'
-        : 'Descontos obtidos';
+  // Nome atual da categoria com esse papel (o usuário pode ter renomeado)
+  const systemKey = `${receiving ? 'RECEIVABLE' : 'PAYABLE'}_${diff > 0 ? 'INTEREST' : 'DISCOUNT'}`;
+  const systemCategory = categories.find((c) => c.systemKey === systemKey);
+  const fallback = !currentCompany.splitsEnabled || !systemCategory ? 'a categoria do lançamento' : systemCategory.name;
   const categoryPicker = (
     <div className="pt-1">
       <label htmlFor="diff-category" className="block text-xs font-medium text-amber-900 mb-1">
