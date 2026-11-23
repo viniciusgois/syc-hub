@@ -84,7 +84,7 @@ export const PanelDetailsModal: React.FC<{ cell: PanelCell; onClose: () => void;
         }
       >
         <p className="text-xs text-slate-500 mb-3">
-          {cash ? 'Regime de caixa: o que foi efetivamente pago/recebido no período.' : 'Regime de competência: realizado e agendado pela data de competência.'} Com rateio, cada
+          {cash ? 'Regime de caixa: o que foi efetivamente pago/recebido no período.' : 'Regime de competência: pago/recebido e agendado, pela data de competência.'} Com rateio, cada
           linha mostra a parte da categoria/centro de custo.
         </p>
         {error && <p className="text-sm text-rose-600">{error}</p>}

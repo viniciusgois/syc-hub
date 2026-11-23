@@ -284,7 +284,7 @@ export const PanelView: React.FC = () => {
         <p className="text-xs text-slate-500 max-w-xl pb-2.5">
           {cash
             ? 'Caixa: só o que foi efetivamente pago e recebido (extrato conciliado e baixas), pela data do pagamento.'
-            : 'Competência: o realizado e o agendado (inclusive vencidos em aberto), pela data de competência. Perdas não entram.'}
+            : 'Competência: o pago/recebido e o agendado (inclusive vencidos em aberto), pela data de competência. Perdas não entram.'}
         </p>
         {loading && <Loader2 className="w-5 h-5 text-nibo-blue animate-spin mb-2.5" />}
       </div>

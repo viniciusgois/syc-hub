@@ -30,9 +30,15 @@ export const sortValue = (r: ReportRow, k: ColumnKey): string | number => {
   return typeof v === 'number' ? v : (v ?? '');
 };
 
+/** Situação de quem já saiu/entrou no banco: "Pago" (saída) ou "Recebido" (entrada) */
+const realizedLabel = (r: ReportRow) => {
+  const outflow = r.entry ? r.entry.direction === 'PAYABLE' : r.value < 0;
+  return outflow ? 'Pago' : 'Recebido';
+};
+
 /** Texto da célula (também usado na exportação) */
 export const cellText = (r: ReportRow, k: ColumnKey) => {
-  if (k === 'status') return r.realized ? 'Realizado' : 'Agendado';
+  if (k === 'status') return r.realized ? realizedLabel(r) : 'Agendado';
   if (isDate(k)) return brDate(r[k] as string | null);
   if (isMoney(k)) return accounting(r[k] as number);
   return (r[k] as string | null) ?? '';
