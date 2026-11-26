@@ -23,7 +23,7 @@ export const SubHeader: React.FC = () => {
       : null;
   if (tabbed) {
     return (
-      <div className="bg-white border-b border-slate-200 px-6 pt-3 flex items-center shrink-0 select-none overflow-x-auto">
+      <div className="bg-white border-b border-slate-200 px-6 pt-3 flex items-center shrink-0 select-none print:hidden overflow-x-auto">
         <div className="flex items-center space-x-6">
           <h2 className="text-base text-slate-800 pb-2.5">{tabbed.title}</h2>
           <nav className="flex items-center space-x-6">
@@ -54,7 +54,7 @@ export const SubHeader: React.FC = () => {
       { module: config.recurrencesModule, label: 'Recorrências' },
     ];
     return (
-      <div className="bg-white border-b border-slate-200 px-6 pt-3 flex items-center shrink-0 select-none">
+      <div className="bg-white border-b border-slate-200 px-6 pt-3 flex items-center shrink-0 select-none print:hidden">
         <div className="flex items-center space-x-6">
           <h2 className="text-base text-slate-800 pb-2.5">{config.section}</h2>
           <nav className="flex items-center space-x-6">
@@ -78,7 +78,7 @@ export const SubHeader: React.FC = () => {
   // Abas da seção Contatos (Clientes | Fornecedores | Funcionários | Sócios)
   if (contactSectionFor(activeModule)) {
     return (
-      <div className="bg-white border-b border-slate-200 px-6 pt-3 flex items-center shrink-0 select-none">
+      <div className="bg-white border-b border-slate-200 px-6 pt-3 flex items-center shrink-0 select-none print:hidden">
         <div className="flex items-center space-x-6">
           <h2 className="text-base text-slate-800 pb-2.5">Contatos</h2>
           <nav className="flex items-center space-x-6">
@@ -106,7 +106,7 @@ export const SubHeader: React.FC = () => {
   }
 
   return (
-    <div className="bg-white border-b border-slate-200 px-6 pt-3 flex items-center justify-between shrink-0 select-none">
+    <div className="bg-white border-b border-slate-200 px-6 pt-3 flex items-center justify-between shrink-0 select-none print:hidden">
       {/* Lado Esquerdo: Título da Seção + Abas */}
       <div className="flex items-center space-x-6">
         <h2 className="text-base text-slate-800 pb-2.5">Gestão de caixa</h2>

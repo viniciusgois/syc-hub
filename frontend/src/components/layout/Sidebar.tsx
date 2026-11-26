@@ -72,7 +72,7 @@ export const Sidebar: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen shrink-0 select-none z-20">
+    <div className="flex h-screen shrink-0 select-none z-20 print:hidden">
       {/* ========================================================= */}
       {/* 1. TRILHO PRINCIPAL ESQUERDO (ÍCONES NIBO - NAVY ESCURO)   */}
       {/* ========================================================= */}

@@ -38,3 +38,28 @@
 .nibo-card-header {
   border-bottom: 1px solid #f1f5f9;
 }
+
+/* Impressão (Contas & Extratos, Fluxo de caixa, Resumo...): página deitada, sem menus, conteúdo inteiro */
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 10mm;
+  }
+  html,
+  body,
+  #root {
+    height: auto !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+  }
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  tr {
+    break-inside: avoid;
+  }
+  thead {
+    display: table-header-group;
+  }
+}

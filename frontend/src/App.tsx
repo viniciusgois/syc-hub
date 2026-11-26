@@ -30,6 +30,7 @@ import { AdvancedSettings } from './components/settings/AdvancedSettings';
 import { contactSectionFor } from './lib/contacts';
 import { CompaniesView } from './components/companies/CompaniesView';
 import { ContractStartBanner } from './components/companies/ContractStartBanner';
+import { PrintHeader } from './components/layout/PrintHeader';
 import { EntriesView } from './components/entries/EntriesView';
 import { RecurrencesView } from './components/entries/RecurrencesView';
 import { entryRoute } from './lib/entries';
@@ -132,12 +133,12 @@ const MainLayout: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen w-full bg-[#f4f6f9] text-slate-800 overflow-hidden font-sans">
+    <div className="flex h-screen w-full bg-[#f4f6f9] text-slate-800 overflow-hidden font-sans print:block print:h-auto print:overflow-visible print:bg-white">
       {/* 1. Sidebar de 2 Níveis Nibo (Trilho Navy + Menu Branco) */}
       <Sidebar />
 
       {/* 2. Área Principal de Conteúdo */}
-      <div className="flex flex-col flex-1 h-screen overflow-hidden">
+      <div className="flex flex-col flex-1 h-screen overflow-hidden print:block print:h-auto print:overflow-visible">
         {/* Header Superior com Seletor Global de Empresas (SYC Empresas ocupa a tela inteira) */}
         {!companiesPage && <Header />}
 
@@ -149,7 +150,7 @@ const MainLayout: React.FC = () => {
 
         {/* Papéis de leitura: o sistema mostra tudo, mas as ações de gravação são recusadas */}
         {!companiesPage && !can('FINANCIAL_OPERATOR') && (
-          <div role="status" className="px-6 py-2 bg-amber-50 border-b border-amber-200 text-xs text-amber-900 flex items-center gap-2 shrink-0">
+          <div role="status" className="px-6 py-2 bg-amber-50 border-b border-amber-200 text-xs text-amber-900 flex items-center gap-2 shrink-0 print:hidden">
             <Eye className="w-3.5 h-3.5 shrink-0" />
             <span>
               Acesso de <strong>{ROLE_LABEL[role]}</strong>: você pode consultar tudo, mas não lançar nem alterar dados nesta empresa.
@@ -158,7 +159,8 @@ const MainLayout: React.FC = () => {
         )}
 
         {/* Conteúdo do Módulo Ativo */}
-        <main className="flex-1 overflow-hidden flex flex-col relative bg-[#f4f6f9]">
+        <main className="flex-1 overflow-hidden flex flex-col relative bg-[#f4f6f9] print:block print:overflow-visible print:bg-white">
+          <PrintHeader />
           {renderActiveModule()}
         </main>
       </div>

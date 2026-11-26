@@ -67,7 +67,7 @@ export const Header: React.FC = () => {
   });
 
   return (
-    <header className="h-14 bg-white border-b border-slate-200/90 px-6 flex items-center justify-between z-30 sticky top-0">
+    <header className="h-14 bg-white border-b border-slate-200/90 px-6 flex items-center justify-between z-30 sticky top-0 print:hidden">
       {/* ========================================================= */}
       {/* SELETOR DE EMPRESAS (ORGANIZATION SELECTOR - IDENTICO NIBO) */}
       {/* ========================================================= */}

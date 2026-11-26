@@ -1,12 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
-import { ArrowDown, ArrowLeftRight, ArrowUp, ChevronLeft, ChevronRight, Loader2, Pencil, Plus, Printer, Search, Undo2 } from 'lucide-react';
+import { ArrowDown, ArrowLeftRight, ArrowUp, FileDown, Loader2, Pencil, Plus, Printer, Search, Undo2 } from 'lucide-react';
 import { useCompany } from '../../context/CompanyContext';
 import { accountDetails, accountInstitution } from '../../lib/accounts';
 import { api, errorMessage } from '../../lib/api';
 import { ENTRY_CONFIG, money, todayIso } from '../../lib/entries';
 import { EntryDrawer } from '../entries/EntryDrawer';
 import { StatementLineDialog } from './StatementLineDialog';
+import { PeriodPicker } from '../common/PeriodPicker';
+import { Period, currentMonth, dayBefore, periodText } from '../../lib/period';
+import { PdfRow, exportTablePdf } from '../../lib/pdfExport';
 import { ReconciliationView } from '../reconciliation/ReconciliationView';
 import { AccountBadge } from './AccountBadge';
 import { EditAccountModal } from './EditAccountModal';
@@ -50,8 +53,6 @@ interface Statement {
   daily: { date: string; balance: number }[];
 }
 
-const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const shortDate = (v: string) => `${v.slice(8, 10)}/${v.slice(5, 7)}/${v.slice(2, 4)}`;
 const compact = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 0 });
 
@@ -61,7 +62,7 @@ export const AccountsAndStatements: React.FC<AccountsAndStatementsProps> = ({ on
   const [view, setView] = useState<'statement' | 'reconcile'>('statement');
   const [search, setSearch] = useState('');
   const [showArchived, setShowArchived] = useState(false);
-  const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+  const [period, setPeriod] = useState<Period>(currentMonth);
   const [statement, setStatement] = useState<Statement | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,6 +72,7 @@ export const AccountsAndStatements: React.FC<AccountsAndStatementsProps> = ({ on
   const [transferOpen, setTransferOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [undoing, setUndoing] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
   const canOperate = can('FINANCIAL_OPERATOR');
 
   const listed = useMemo(() => {
@@ -80,8 +82,7 @@ export const AccountsAndStatements: React.FC<AccountsAndStatementsProps> = ({ on
   const everyAccount = useMemo(() => [...accounts, ...archivedAccounts], [accounts, archivedAccounts]);
   const account = everyAccount.find((a) => a.id === selectedAccountId) ?? listed[0] ?? accounts[0];
 
-  const from = iso(month);
-  const to = iso(new Date(month.getFullYear(), month.getMonth() + 1, 0));
+  const { from, to } = period;
 
   // Recarrega o extrato quando muda a conta/mês ou quando o razão é recarregado (saldos mudam após qualquer ação)
   useEffect(() => {
@@ -131,7 +132,71 @@ export const AccountsAndStatements: React.FC<AccountsAndStatementsProps> = ({ on
   const total = listed.reduce((s, a) => s + a.currentBalance, 0);
   const todayKey = todayIso();
   const chart = (statement?.daily ?? []).map((d) => ({ ...d, label: d.date === todayKey ? 'Hoje' : `${d.date.slice(8, 10)}/${d.date.slice(5, 7)}` }));
-  const prevDay = iso(new Date(month.getFullYear(), month.getMonth(), 0));
+  const prevDay = dayBefore(from);
+
+  /** Categoria como aparece no extrato (transferência, rateio ou a categoria) */
+  const categoryOf = (r: StatementRow) =>
+    r.isTransfer
+      ? `Transferência${r.transferAccount ? ` ${r.type === 'DEBIT' ? 'para' : 'de'} ${r.transferAccount.name}` : ''}`
+      : r.splitCount > 1
+        ? `Rateio · ${r.splitCount} categorias`
+        : (r.categoryName ?? '');
+
+  /** PDF do extrato (como o do Nibo, mais organizado): resumo, gráfico do saldo e o extrato com saldo por dia */
+  const exportPdf = async () => {
+    if (!statement) return;
+    setExporting(true);
+    try {
+      const rows = statement.rows;
+      const income = rows.filter((r) => r.type === 'CREDIT').reduce((t, r) => t + r.amount, 0);
+      const expense = rows.filter((r) => r.type === 'DEBIT').reduce((t, r) => t + r.amount, 0);
+      const br = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(2, 4)}`;
+      const body: PdfRow[] = [
+        { cells: [br(prevDay), '', 'Saldo anterior', '', '', '', '', money(statement.previousBalance)], style: 'group' },
+        ...rows.map((r, i) => {
+          const firstOfDay = i === 0 || rows[i - 1].date.slice(0, 10) !== r.date.slice(0, 10);
+          const lastOfDay = i === rows.length - 1 || rows[i + 1].date.slice(0, 10) !== r.date.slice(0, 10);
+          return {
+            cells: [
+              firstOfDay ? br(r.date) : '',
+              r.contactName ?? '',
+              r.description,
+              categoryOf(r),
+              r.documentNumber ?? '',
+              r.type === 'CREDIT' ? money(r.amount) : '',
+              r.type === 'DEBIT' ? `(${money(r.amount)})` : '',
+              lastOfDay ? money(r.balance) : '',
+            ],
+          };
+        }),
+      ];
+      const safe = (v: string) => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\W+/g, '_');
+      await exportTablePdf({
+        fileName: `Extrato_${safe(account.name)}_${from}_${to}.pdf`,
+        company: currentCompany,
+        title: `Extrato · ${account.name}`,
+        subtitle: `${accountInstitution(account)}${account.agency ? ` · ${accountDetails(account)}` : ''} · Período: ${periodText(period)}`,
+        summary: [
+          { label: `Saldo anterior (${br(prevDay)})`, value: `R$ ${money(statement.previousBalance)}`, tone: statement.previousBalance < 0 ? 'negative' : 'neutral' },
+          { label: 'Entradas no período', value: `R$ ${money(income)}`, tone: 'positive' },
+          { label: 'Saídas no período', value: `R$ ${money(expense)}`, tone: 'negative' },
+          { label: `Saldo final (${br(to)})`, value: `R$ ${money(statement.finalBalance)}`, tone: statement.finalBalance < 0 ? 'negative' : 'neutral' },
+        ],
+        chart: statement.daily.length > 1 ? { labels: statement.daily.map((d) => `${d.date.slice(8, 10)}/${d.date.slice(5, 7)}`), series: [{ name: 'Saldo', values: statement.daily.map((d) => d.balance), fill: true }] } : undefined,
+        tableTitle: 'Extrato',
+        head: ['Data', 'Nome', 'Descrição', 'Categoria', 'Ref.', 'Entrada', 'Saída', 'Saldo'],
+        body,
+        foot: ['Total do período', '', '', '', '', money(income), `(${money(expense)})`, money(statement.finalBalance)],
+        rightAligned: [5, 6, 7],
+        colorColumns: { positive: [5], negative: [6] },
+        widths: { 0: 56, 4: 60, 5: 72, 6: 72, 7: 78 },
+      });
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setExporting(false);
+    }
+  };
   const pending = statement?.pendingCount ?? account.unreconciledCount ?? 0;
 
   return (
@@ -142,6 +207,14 @@ export const AccountsAndStatements: React.FC<AccountsAndStatementsProps> = ({ on
           <button type="button" onClick={() => window.print()} title="Imprimir" aria-label="Imprimir" className="p-2 rounded text-slate-500 hover:bg-slate-100">
             <Printer className="w-4 h-4" />
           </button>
+          <button
+            type="button"
+            onClick={exportPdf}
+            disabled={!statement || exporting}
+            className="h-9 px-3 rounded border border-slate-300 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 disabled:opacity-50"
+          >
+            {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />} Exportar PDF
+          </button>
           {can('ADMIN') && (
             <button onClick={onAddAccount} className="h-9 px-4 rounded bg-nibo-blue hover:bg-nibo-blueHover text-white text-sm font-medium flex items-center gap-1.5">
               <Plus className="w-4 h-4" /> Adicionar conta
@@ -150,7 +223,7 @@ export const AccountsAndStatements: React.FC<AccountsAndStatementsProps> = ({ on
         </div>
       </div>
 
-      <div className="px-6 grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-5">
+      <div className="px-6 grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-5 print:block">
         {/* Lista de contas */}
         <section aria-label="Contas" className="border border-slate-200 rounded flex flex-col self-start print:hidden">
           <div className="p-3 flex items-center gap-3">
@@ -232,15 +305,7 @@ export const AccountsAndStatements: React.FC<AccountsAndStatementsProps> = ({ on
               </div>
             </div>
             <div className="flex items-center gap-3 shrink-0">
-              <button type="button" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))} aria-label="Mês anterior" className="p-1 rounded text-nibo-blue hover:bg-slate-100">
-                <ChevronLeft className="w-5 h-5" />
-              </button>
-              <span className="text-lg text-slate-700 w-24 text-center">
-                {MONTHS[month.getMonth()]}/{month.getFullYear()}
-              </span>
-              <button type="button" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))} aria-label="Próximo mês" className="p-1 rounded text-nibo-blue hover:bg-slate-100">
-                <ChevronRight className="w-5 h-5" />
-              </button>
+              <PeriodPicker value={period} onChange={setPeriod} />
             </div>
           </div>
           <div className="h-[240px] mt-3">
@@ -305,7 +370,7 @@ export const AccountsAndStatements: React.FC<AccountsAndStatementsProps> = ({ on
             )}
           </div>
         )}
-        <div className="border border-slate-200 rounded overflow-x-auto">
+        <div className="border border-slate-200 rounded overflow-x-auto print:overflow-visible">
           <table className="w-full text-[13px] text-slate-700">
             <thead className="bg-slate-100 text-slate-700">
               <tr>
@@ -348,11 +413,7 @@ export const AccountsAndStatements: React.FC<AccountsAndStatementsProps> = ({ on
               )}
               {statement?.rows.map((r) => {
                 const entry = r.entries[0];
-                const category = r.isTransfer
-                  ? `Transferência${r.transferAccount ? ` ${r.type === 'DEBIT' ? 'para' : 'de'} ${r.transferAccount.name}` : ''}`
-                  : r.splitCount > 1
-                    ? `Rateio · ${r.splitCount} categorias`
-                    : (r.categoryName ?? '—');
+                const category = categoryOf(r) || '—';
                 // Baixa registrada no sistema: estorna-se pelo lançamento; o resto volta para a Conciliação
                 const undoable = r.origin !== 'SETTLEMENT';
                 return (

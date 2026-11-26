@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Printer, Pencil, ArrowUp, ArrowDown, Loader2, AlertTriangle } from 'lucide-react';
+import { Printer, Pencil, ArrowUp, ArrowDown, Loader2, AlertTriangle } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine } from 'recharts';
 import * as XLSX from 'xlsx';
 import { useCompany } from '../../context/CompanyContext';
@@ -11,6 +11,8 @@ import { ExportMenu } from '../reports/ExportMenu';
 import { PdfRow, exportTablePdf } from '../../lib/pdfExport';
 import { accounting } from '../../lib/reports';
 import { StatementSearchDialog } from '../reconciliation/StatementSearchDialog';
+import { PeriodPicker } from '../common/PeriodPicker';
+import { Period, monthsPeriod } from '../../lib/period';
 
 interface CashflowItem {
   id: string;
@@ -40,22 +42,16 @@ const shortDate = (iso: string) => {
   const [y, m, d] = iso.slice(0, 10).split('-');
   return `${d}/${m}/${y.slice(2)}`;
 };
-const monthLabel = (d: Date) =>
-  d.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric', timeZone: 'UTC' }).replace('. de ', '/').replace(' de ', '/').replace('.', '');
 
-/** Janela de 3 meses centrada no mês âncora (mês anterior, atual e seguinte) */
-function windowFor(offset: number) {
+/** Padrão: 3 meses (o anterior, o atual e o seguinte) */
+function defaultWindow(): Period {
   const now = new Date();
-  const y = now.getFullYear();
-  const m = now.getMonth() + offset;
-  const from = new Date(Date.UTC(y, m - 1, 1));
-  const to = new Date(Date.UTC(y, m + 2, 0));
-  return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10), label: `${monthLabel(from)} - ${monthLabel(to)}` };
+  return monthsPeriod(now.getFullYear(), now.getMonth() - 1, 3);
 }
 
 export const CashflowView: React.FC = () => {
   const { currentCompany, accounts, transactions, refreshLedger } = useCompany();
-  const [offset, setOffset] = useState(0);
+  const [period, setPeriod] = useState<Period>(defaultWindow);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [data, setData] = useState<Cashflow | null>(null);
   const [loading, setLoading] = useState(false);
@@ -63,7 +59,6 @@ export const CashflowView: React.FC = () => {
   const [editingDate, setEditingDate] = useState<string | null>(null);
   const [drawer, setDrawer] = useState<{ direction: EntryDirection; id: string } | null>(null);
   const [searching, setSearching] = useState<CashflowItem | null>(null);
-  const period = windowFor(offset);
 
   // Novas contas entram marcadas; desmarcações do usuário são mantidas
   useEffect(() => {
@@ -160,7 +155,21 @@ export const CashflowView: React.FC = () => {
       fileName,
       company: currentCompany,
       title: 'Fluxo de caixa',
-      subtitle: `Período: ${brDate(data.from)} a ${brDate(data.to)}`,
+      subtitle: `Período: ${brDate(data.from)} a ${brDate(data.to)}${accountsParam ? ' · contas selecionadas' : ' · todas as contas'}`,
+      summary: [
+        { label: `Saldo hoje (${brDate(data.today)})`, value: `R$ ${nibo(data.balanceToday)}`, tone: data.balanceToday < 0 ? 'negative' : 'neutral' },
+        { label: 'A receber até o fim do período', value: `R$ ${money(data.totals.futureIn)}`, tone: 'positive' },
+        { label: 'A pagar até o fim do período', value: `R$ ${money(data.totals.futureOut)}`, tone: 'negative' },
+        { label: `Saldo projetado (${brDate(data.to)})`, value: `R$ ${nibo(data.totals.projectedEnd)}`, tone: data.totals.projectedEnd < 0 ? 'negative' : 'neutral' },
+      ],
+      chart: {
+        labels: data.series.map((p) => `${p.date.slice(8, 10)}/${p.date.slice(5, 7)}`),
+        series: [
+          { name: 'Saldo realizado', values: data.series.map((p) => p.actual), fill: true },
+          { name: 'Saldo projetado', values: data.series.map((p) => p.projected), dashed: true },
+        ],
+      },
+      tableTitle: 'Agendamentos',
       head: ['Data', 'Vencimento', 'Nome', 'Descrição', 'Entrada', 'Saída', 'Saldo'],
       body,
       rightAligned: [4, 5, 6],
@@ -255,10 +264,10 @@ export const CashflowView: React.FC = () => {
   );
 
   return (
-    <div className="flex-1 overflow-y-auto bg-white text-slate-800 px-6 py-5">
+    <div className="flex-1 overflow-y-auto bg-white text-slate-800 px-6 py-5 print:overflow-visible">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-medium text-slate-700">Fluxo de Caixa</h1>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 print:hidden">
           <ExportMenu disabled={!data} onExcel={exportXlsx} onPdf={exportPdf} />
           <button onClick={() => window.print()} aria-label="Imprimir" title="Imprimir" className="p-2 rounded text-slate-500 hover:bg-slate-100">
             <Printer className="w-4 h-4" />
@@ -266,7 +275,7 @@ export const CashflowView: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] print:grid-cols-[300px_1fr] gap-6">
         {/* Contas */}
         <div className="border border-slate-200 rounded overflow-hidden self-start">
           {accounts.length === 0 && <p className="px-5 py-4 text-sm text-slate-500">Nenhuma conta cadastrada.</p>}
@@ -295,13 +304,7 @@ export const CashflowView: React.FC = () => {
         <div className="min-w-0">
           <div className="flex items-center justify-end gap-3 mb-2">
             {loading && <Loader2 className="w-4 h-4 text-nibo-blue animate-spin" />}
-            <button onClick={() => setOffset((o) => o - 1)} aria-label="Período anterior" className="p-1 rounded text-nibo-blue hover:bg-nibo-blueLight">
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-            <span className="text-lg text-slate-700 min-w-[190px] text-center">{period.label}</span>
-            <button onClick={() => setOffset((o) => o + 1)} aria-label="Próximo período" className="p-1 rounded text-nibo-blue hover:bg-nibo-blueLight">
-              <ChevronRight className="w-5 h-5" />
-            </button>
+            <PeriodPicker value={period} onChange={setPeriod} />
           </div>
           <div className="h-[290px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -382,7 +385,7 @@ export const CashflowView: React.FC = () => {
       <h2 id="cf-past" className="text-lg text-slate-700 mt-8 mb-2">
         Agendamentos Passados
       </h2>
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto print:overflow-visible">
         <table className="w-full text-sm min-w-[860px]">
           {renderHead()}
           <tbody>
@@ -412,7 +415,7 @@ export const CashflowView: React.FC = () => {
 
       {/* Futuros */}
       <h2 className="text-lg text-slate-700 mt-8 mb-2">Agendamentos Futuros</h2>
-      <div className="overflow-auto max-h-[480px] border-b border-slate-200">
+      <div className="overflow-auto max-h-[480px] border-b border-slate-200 print:overflow-visible print:max-h-none">
         <table className="w-full text-sm min-w-[960px]">
           {renderHead(true)}
           <tbody>
